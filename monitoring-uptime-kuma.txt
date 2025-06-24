@@ -1,0 +1,46 @@
+#Cấu hình PV và PVC Uptime Kuma
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: uptime-kuma-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/monitoring
+    server: 192.168.1.115 #chú ý đổi địa chỉ IP tương ứng của bạn
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uptime-kuma-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs-storage
+
+#Khởi tạo Uptime Kuma Cấu hình file values.yaml
+volume:
+  enabled: true
+  accessMode: ReadWriteOnce
+  existingClaim: "uptime-kuma-pvc"
+
+#Khởi tạo Uptime Kuma
+helm repo add uptime-kuma https://helm.irsigler.cloud
+helm repo update
+helm install toandevops-uptime uptime-kuma/uptime-kuma -n monitoring -f values.yaml
+
+#Nếu bị lỗi do quyền chú ý xem thư mục /data/monitoring trên server NFS server 
+sudo mkdir -o /data/monitoring
+sudo chown -R nobody:nogroup /data
+sudo chmod -R 777 /data
+
+

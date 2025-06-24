@@ -1,0 +1,145 @@
+#list server and setup
+apt install -y net-tools telnet traceroute
+apt install -y mariadb-server mariadb-client
+
+#server-1
+#galera cluster /etc/mysql/conf.d/galera.cnf
+[mysqld]
+binlog_format=ROW
+default-storage-engine=innodb
+innodb_autoinc_lock_mode=2
+bind-address=0.0.0.0
+
+# Galera Provider Configuration
+wsrep_on=ON
+wsrep_provider=/usr/lib/galera/libgalera_smm.so
+
+# Cluster Configuration
+wsrep_cluster_name="mariadb-cluster-toandevops"
+wsrep_cluster_address="gcomm://192.168.213.11,192.168.213.12,192.168.213.13"
+
+# Galera Synchronization Configuration
+wsrep_sst_method=rsync
+
+# Node Configuration
+wsrep_node_address="192.168.213.11"
+wsrep_node_name="server-1"
+
+#server-2 va 3 tuong tu thay doi wsrep_node_address & wsrep_node_name
+#start cluster
+#server-1
+systemctl stop mariadb
+galera_new_cluster
+
+#kiem tra
+mysql -u root -e "SHOW STATUS LIKE 'wsrep_cluster_size'"
+
+#server-2,3
+systemctl restart mariadb
+
+#install maxscale
+wget https://dlm.mariadb.com/2344079/MaxScale/6.4.1/packages/ubuntu/jammy/x86_64/maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
+dpkg -i maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
+
+#create user connect maxscale
+CREATE USER 'maxscale'@'%' IDENTIFIED BY 'password';
+GRANT REPLICATION CLIENT ON *.* TO 'maxscale'@'%';
+GRANT REPLICATION SLAVE ADMIN ON *.* TO 'maxscale'@'%';
+GRANT REPLICA MONITOR ON *.* TO 'maxscale'@'%';
+FLUSH PRIVILEGES;
+
+
+############# docker compose ###############
+version: '3.7'
+
+services:
+  node1:
+    image: mariadb:10.5
+    container_name: node1
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=testdb
+    volumes:
+      - ./node1/galera.cnf:/etc/mysql/conf.d/galera.cnf
+    networks:
+      galera:
+        aliases:
+          - node1
+    ports:
+      - "3307:3306"
+    command: [
+      "mysqld",
+      "--wsrep-new-cluster"
+    ]
+  node2:
+    image: mariadb:10.5
+    container_name: node2
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    volumes:
+      - ./node2/galera.cnf:/etc/mysql/conf.d/galera.cnf
+    networks:
+      galera:
+        aliases:
+          - node2
+    ports:
+      - "3308:3306"
+
+  node3:
+    image: mariadb:10.5
+    container_name: node3
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    volumes:
+      - ./node3/galera.cnf:/etc/mysql/conf.d/galera.cnf
+    networks:
+      galera:
+        aliases:
+          - node3
+    ports:
+      - "3309:3306"
+
+networks:
+  galera:
+    driver: bridge
+
+# Start node1 đầu tiên và bootstrap Galera cluster:
+docker-compose up -d node1
+docker exec -it node1 bash
+mysqld --wsrep-new-cluster --user=mysql
+# Khởi động node2 và node3:
+docker-compose up -d node2 node3
+#trong từng node để kiểm tra cluster:
+docker exec -it node1 mysql -uroot -proot -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+
+# neu su dung replication truyền thống (asynchronous)
+# my.cnf
+[mysqld]
+server-id=1
+log-bin=mysql-bin
+# neu la slave
+read_only=1
+
+# ạo user replication và cấp quyền
+CREATE USER 'replicator'@'%' IDENTIFIED BY 'replpass';
+GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
+FLUSH PRIVILEGES;
+
+SHOW MASTER STATUS;
+
+File: ví dụ mysql-bin.000001
+Position: ví dụ 1234
+
+# join vao master, cau hinh de dong bo
+CHANGE MASTER TO
+  MASTER_HOST='master',
+  MASTER_USER='replicator',
+  MASTER_PASSWORD='replpass',
+  MASTER_LOG_FILE='mysql-bin.000001',
+  MASTER_LOG_POS=1234;
+
+START SLAVE;
+# kiem tra dong bo, Slave_IO_Running: yes, Slave_SQL_Running: yes
+SHOW SLAVE STATUS\G
+
+	

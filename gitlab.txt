@@ -1,0 +1,7 @@
+#Cài đặt gitlab:
+curl -s https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.deb.sh | sudo bash
+apt install gitlab-ee=15.7.7-ee.0
+
+#Tạo chứng chỉ ssl
+sudo certbot certonly --standalone -d gitlab.toandevops.click --preferred-challenges http --agree-tos -m $EMAIL --keep-until-expiring
+

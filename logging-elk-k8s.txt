@@ -1,0 +1,145 @@
+#server master-storage
+#Tạo thư mục lưu trữ
+mkdir -p /data/nfs-shared/logging/es-0/
+mkdir -p /data/nfs-shared/logging/es-1/
+mkdir -p /data/nfs-shared/logging/es-2/
+
+#server k8s-master-1 user devops
+#Cài đặt ELK stack với helm chart
+cd && mkdir logging && cd logging
+helm repo add elastic https://helm.elastic.co
+kubectl create ns logging
+helm show values elastic/filebeat > filebeat-values.yml
+helm show values elastic/logstash > logstash-values.yml
+helm show values elastic/elasticsearch > elasticsearch-values.yml
+helm show values elastic/kibana > kibana-values.yml
+
+#Cấu hình file filebeat-values.yml
+filebeatConfig:
+    filebeat.yml: |
+      filebeat.inputs:
+      - type: container
+        paths:
+          - /var/log/containers/*.log
+        processors:
+        - add_kubernetes_metadata:
+            host: ${NODE_NAME}
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+      output.logstash:
+        hosts: ["logstash-logstash:5044"]
+
+#logstash-values.yml
+## 1 ##
+extraEnvs: 
+    - name: "ELASTICSEARCH_USERNAME"
+      valueFrom:
+        secretKeyRef:
+          name: elasticsearch-master-credentials
+          key: username
+    - name: "ELASTICSEARCH_PASSWORD"
+      valueFrom:
+        secretKeyRef:
+          name: elasticsearch-master-credentials
+          key: password
+
+## 2 ##
+logstashPipeline:
+  logstash.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+    }
+
+     output {
+      elasticsearch {
+        hosts => "https://elasticsearch-master:9200"
+        cacert => "/usr/share/logstash/config/elasticsearch-master-certs/ca.crt"
+        user => '${ELASTICSEARCH_USERNAME}'  # Elasticsearch username
+        password => '${ELASTICSEARCH_PASSWORD}' # Elasticsearch password
+      }
+    }
+
+## 3 ##
+secretMounts:
+  - name: "elasticsearch-master-certs"
+    secretName: "elasticsearch-master-certs"
+    path: "/usr/share/logstash/config/elasticsearch-master-certs"
+
+## 4 ##
+service:
+  annotations: {}
+  type: ClusterIP
+  loadBalancerIP: ""
+  ports:
+    - name: beats
+      port: 5044
+      protocol: TCP
+      targetPort: 5044
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+
+#elasticsearch-values.yml 
+# Tìm kiếm và sửa giá trị sau đây: từ 30G thành 5G (phù hợp với bài giảng)
+storage: 5Gi
+
+#Tạo 3 pv dành cho ES cluster trên Rancher (k8s-master-1)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: es-0-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/nfs-shared/logging/es-0/
+    server: 192.168.100.112
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: es-1-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/nfs-shared/logging/es-1/
+    server: 192.168.100.112
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: es-2-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/nfs-shared/logging/es-2/
+    server: 192.168.100.112
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+
+
+#Khởi chạy hạ tầng
+helm install elasticsearch elastic/elasticsearch -f elasticsearch-values.yml -n logging
+helm install filebeat elastic/filebeat -f filebeat-values.yml -n logging
+helm install logstash elastic/logstash -f logstash-values.yml -n logging
+helm install kibana elastic/kibana -f kibana-values.yml -n logging
+
+
+

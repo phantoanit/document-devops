@@ -1,0 +1,256 @@
+sudo apt update
+sudo apt install -y mysql-server
+
+# Cấu hình my.cnf trên cả 3 node
+
+# /etc/mysql/mysql.conf.d/mysqld.cnf
+[mysqld]
+server-id=1                     # Khác nhau ở mỗi node
+log_bin=binlog
+gtid_mode=ON
+enforce-gtid-consistency=ON
+binlog_format=ROW
+master_info_repository=TABLE
+relay_log_info_repository=TABLE
+transaction_write_set_extraction=XXHASH64
+# Group Replication
+loose-group_replication_group_name="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+loose-group_replication_start_on_boot=off
+loose-group_replication_local_address="172.16.0.150:33061"
+loose-group_replication_group_seeds="172.16.0.150:33061,172.16.0.151:33061,172.16.0.152:33061"
+loose-group_replication_bootstrap_group=OFF
+loose-group_replication_single_primary_mode=OFF
+loose-group_replication_enforce_update_everywhere_checks=ON
+
+plugin_load_add='group_replication.so'
+bind-address = 0.0.0.0
+
+#ufw allow 3306,33061/tcp
+ufw enable
+sudo ufw allow 3306
+sudo ufw allow 33061
+sudo ufw reload
+
+# install plugin
+INSTALL PLUGIN group_replication SONAME 'group_replication.so';
+
+# Trên một node (mysql1):
+mysql -u root -p
+
+#CREATE USER 'repl'@'%' IDENTIFIED BY 'ReplPass123!';
+#GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
+#GRANT CONNECTION_ADMIN, GROUP_REPLICATION_STREAM ON *.* TO 'repl'@'%';
+#FLUSH PRIVILEGES;
+
+# Cấu hình và khởi động Group Replication
+
+#systemctl restart mysql
+
+#Trên tất cả các node:
+SET SQL_LOG_BIN=0;
+CREATE USER rpl_user@'%' IDENTIFIED WITH mysql_native_password BY 'password';
+GRANT REPLICATION SLAVE ON *.* TO rpl_user@'%';
+FLUSH PRIVILEGES;
+SET SQL_LOG_BIN=1;
+
+#Trên mysql1 (node đầu tiên):
+CHANGE MASTER TO MASTER_USER='rpl_user', MASTER_PASSWORD='password' FOR CHANNEL 'group_replication_recovery';
+
+SET GLOBAL group_replication_bootstrap_group=ON;
+START GROUP_REPLICATION;
+SET GLOBAL group_replication_bootstrap_group=OFF;
+
+#Kiểm tra:
+SELECT * FROM performance_schema.replication_group_members;
+
+#Trên mysql2 và mysql3 (node tham gia):
+CHANGE MASTER TO MASTER_USER='rpl_user', MASTER_PASSWORD='password' FOR CHANNEL 'group_replication_recovery';
+START GROUP_REPLICATION;
+
+#Kiểm tra cluster hoạt động
+SELECT MEMBER_ID, MEMBER_HOST, MEMBER_STATE FROM performance_schema.replication_group_members;
+
+#Trên tất cả các node
+172.16.0.150   mysql-1
+172.16.0.151   mysql-2
+172.16.0.152   mysql-3
+
+# Tạo MySQL Router, chi can 1 server
+
+apt install mysql-router -y
+
+# Tạo user cho Router kết nối
+#một node MySQL bất kỳ (ví dụ mysql-1):
+CREATE USER 'router_user'@'%' IDENTIFIED BY 'StrongPassword123!';
+GRANT ALL ON *.* TO 'router_user'@'%' WITH GRANT OPTION;
+
+#Tạo user hệ thống mysqlrouter
+useradd -r -s /bin/false mysqlrouter
+
+#ạo file config /etc/mysqlrouter/mysqlrouter.conf
+[DEFAULT]
+user = mysqlrouter
+logging_folder = /var/log/mysqlrouter
+runtime_folder = /run/mysqlrouter
+data_folder = /var/lib/mysqlrouter
+
+[routing:read_write]
+bind_address = 0.0.0.0:6446
+destinations = mysql-1:3306,mysql-2:3306,mysql-3:3306
+mode = read-write
+
+[routing:read_only]
+bind_address = 0.0.0.0:6447
+destinations = mysql-2:3306,mysql-3:3306
+mode = read-only
+
+# Tạo thư mục và phân quyền
+sudo mkdir -p /var/log/mysqlrouter /run/mysqlrouter /var/lib/mysqlrouter
+sudo chown -R mysqlrouter:mysqlrouter /var/log/mysqlrouter /run/mysqlrouter /var/lib/mysqlrouter
+
+# Tạo thủ công file systemd service
+# /etc/systemd/system/mysqlrouter.service
+[Unit]
+Description=MySQL Router
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/mysqlrouter --config /etc/mysqlrouter/mysqlrouter.conf
+Restart=always
+User=mysqlrouter
+Group=mysqlrouter
+
+[Install]
+WantedBy=multi-user.target
+
+# Kích hoạt và khởi động Router
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl enable mysqlrouter
+sudo systemctl start mysqlrouter
+sudo systemctl status mysqlrouter
+
+# thu ket noi mysql -u root -p -h 127.0.0.1 -P 6446
+# Tạo user test và cấp quyền (trên 1 node là đủ)
+CREATE USER 'testuser'@'%' IDENTIFIED WITH mysql_native_password BY 'Test@1234';
+GRANT ALL PRIVILEGES ON *.* TO 'testuser'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+# SELECT user, host FROM mysql.user WHERE user = 'testuser';
+
+
+######### mysql cluster with docker############
+#docker-compose.yml
+version: '3.8'
+
+services:
+  mysql1:
+    image: mysql:8.0
+    container_name: mysql1
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3307:3306"
+    networks:
+      - mysql-cluster-net
+    volumes:
+      - ./conf/mysql1.cnf:/etc/mysql/conf.d/my.cnf
+
+  mysql2:
+    image: mysql:8.0
+    container_name: mysql2
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3308:3306"
+    networks:
+      - mysql-cluster-net
+    volumes:
+      - ./conf/mysql2.cnf:/etc/mysql/conf.d/my.cnf
+
+  mysql3:
+    image: mysql:8.0
+    container_name: mysql3
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3309:3306"
+    networks:
+      - mysql-cluster-net
+    volumes:
+      - ./conf/mysql3.cnf:/etc/mysql/conf.d/my.cnf
+
+networks:
+  mysql-cluster-net:
+    driver: bridge
+
+#file config cnf
+[mysqld]
+server-id=1
+gtid_mode=ON
+enforce-gtid-consistency=ON
+log-bin=mysql-bin
+binlog_format=ROW
+default_authentication_plugin=mysql_native_password
+transaction_write_set_extraction=XXHASH64
+loose-group_replication_group_name="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+loose-group_replication_start_on_boot=off
+loose-group_replication_local_address="mysql1:33061"
+loose-group_replication_group_seeds="mysql1:33061,mysql2:33061,mysql3:33061"
+loose-group_replication_bootstrap_group=off
+loose-group_replication_single_primary_mode=on
+loose-group_replication_enforce_update_everywhere_checks=off
+
+#cac node sua file config cnf, thay gia tri server-id va local_address
+
+#khoi tao group replication
+docker-compose up -d
+#dau tien vao node1
+docker exec -it mysql1 mysql -uroot -prootpass
+
+SET SQL_LOG_BIN=0;
+CREATE USER 'repl'@'%' IDENTIFIED BY 'replpass';
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
+FLUSH PRIVILEGES;
+SET SQL_LOG_BIN=1;
+
+CHANGE MASTER TO MASTER_USER='repl', MASTER_PASSWORD='replpass' FOR CHANNEL 'group_replication_recovery';
+
+INSTALL PLUGIN group_replication SONAME 'group_replication.so';
+
+
+SET GLOBAL group_replication_bootstrap_group=ON;
+START GROUP_REPLICATION;
+SET GLOBAL group_replication_bootstrap_group=OFF;
+
+SELECT * FROM performance_schema.replication_group_members;
+
+#vao cac node con lai, ket noi kenh recovery de Sao chép từ binary log va clone du lieu truoc khi dua vao group replication
+SET SQL_LOG_BIN=0;
+CREATE USER 'repl'@'%' IDENTIFIED BY 'replpass';
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
+FLUSH PRIVILEGES;
+SET SQL_LOG_BIN=1;
+
+RESET MASTER;
+CHANGE MASTER TO MASTER_USER='repl', MASTER_PASSWORD='replpass' FOR CHANNEL 'group_replication_recovery';
+INSTALL PLUGIN group_replication SONAME 'group_replication.so';
+START GROUP_REPLICATION;
+
+SELECT * FROM performance_schema.replication_group_members;
+
+#xu ly cac loi
+#neu co traction tren node thi reset truoc khi join cum
+#RESET MASTER;
+#CHANGE MASTER TO MASTER_USER='repl', MASTER_PASSWORD='replpass' FOR CHANNEL 'group_replication_recovery';
+#START GROUP_REPLICATION;
+
+# tren production can luu y
+# 'repl'@'slave1_ip' thay vì '%' 
+# tao file .env lu mat khau MYSQL_ROOT_PASSWORD= MYSQL_REPL_PASSWORD=
+# mount volumes: - master_data:/var/lib/mysql
+# cong cu back up mysqldump, mysqlhotcopy hoặc Percona XtraBackup.
+#
+# docker compose up -d --no-deps --force-recreate mysql-router 

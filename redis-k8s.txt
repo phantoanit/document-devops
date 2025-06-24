@@ -1,0 +1,78 @@
+#Cấu hình PV và PVC cho Redis
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    path: /data/redis/
+    server: 192.168.1.115 #Chú ý thay địa chỉ IP tương ứng của bạn
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: architecture
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs-storage
+
+
+#Tạo thư mục chứa dữ liệu trên NFS server 
+sudo mkdir /data/redis
+sudo chown -R nobody:nogroup /data/
+sudo chmod -R 777 /data
+
+#Cấu hình file values.yaml của Redis chart
+architecture: replication
+
+auth:
+  enabled: true
+  password: "toandevops"
+
+master:
+  persistence:
+    enabled: true
+    existingClaim: redis-pvc
+    size: 3Gi
+
+replica:
+  replicaCount: 3
+  persistence:
+    enabled: true
+    existingClaim: redis-pvc
+    size: 3Gi
+
+sentinel:
+  enabled: true
+  replicas: 3
+
+
+#Khởi tạo Redis Chart
+kubectl create ns architecture
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm install redis-sentinel bitnami/redis --values values.yaml --namespace architecture
+
+#test ket noi
+apk add redis
+redis-cli -h redis-sentinel.architecture.svc.cluster.local -p 26379 -a toandevops
+>> SENTINEL get-master-addr-by-name mymaster
+>> exit
+redis-cli -h redis-sentinel-node-0.redis-sentinel-headless.architecture.svc.cluster.local -p 6379 -a toandevops
+>> SET k8s_course "K8s series by toandevops"
+>> GET k8s_course
+
+
+
+

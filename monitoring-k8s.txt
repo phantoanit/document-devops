@@ -1,0 +1,77 @@
+#Thực hiện trên server master-storage
+#Tạo thư mục lưu trữ
+mkdir -p /data/nfs-shared/monitoring/grafana/
+mkdir -p /data/nfs-shared/monitoring/prometheus/
+
+#Thực hiện trên server k8s-master-1 user devops
+#Cài đặt kube prometheus stack helm chart
+cd && mkdir monitoring && cd monitoring
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+kubectl create ns monitoring
+
+#Tạo pv prometheus
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: prometheus-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/nfs-shared/monitoring/prometheus
+    server: 192.168.100.112
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+
+#Khởi tạo Kube Prometheus stack Chart (thực hiện trên server k8s-master-1 hoặc kubectl shell Rancher)
+helm repo update
+helm upgrade --install toandevops prometheus-community/kube-prometheus-stack 
+  --namespace monitoring 
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce 
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi 
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=nfs-storage
+
+#Tạo pv và pvc grafana
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: grafana-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/nfs-shared/monitoring/grafana
+    server: 192.168.100.112
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs-storage
+  volumeMode: Filesystem
+  volumeName: grafana-pv
+
+#File values.yaml mở cấu hình sử dụng pvc có sẵn của grafana
+grafana:
+  persistence:
+    enabled: true
+    existingClaim: grafana-pvc
+
+#Khởi chạy lại kube prometheus stack
+helm upgrade --install toandevops prometheus-community/kube-prometheus-stack -f values.yaml --namespace monitoring
+
+
+

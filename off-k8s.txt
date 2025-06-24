@@ -1,0 +1,39 @@
+#Tắt các ứng dụng đang chạy 
+kubectl scale deployment <your-app> --replicas=0
+
+#SSH vào từng node Worker nodes → Sau đó mới đến Master nodes
+
+#rên mỗi node: Dừng kubelet và containerd
+sudo systemctl stop kubelet
+sudo systemctl stop containerd
+sudo systemctl stop docker
+
+#Backup etcd trên master (rất nên làm nếu production)
+sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  snapshot save /root/etcd-backup.db
+
+sudo poweroff
+
+#Bật lại các máy (master và worker) Master nodes → Rồi đến Worker nodes
+#Kiểm tra dịch vụ tự khởi động
+sudo systemctl status kubelet
+sudo systemctl status containerd
+
+# Kiểm tra trạng thái Cluster
+kubectl get nodes
+kubectl get pods -A
+
+
+#script tắt các node an toàn như sau
+#!/bin/bash
+echo "[+] Stopping kubelet and container runtime..."
+sudo systemctl stop kubelet
+sudo systemctl stop containerd
+echo "[+] Shutting down node..."
+sudo poweroff
+
+

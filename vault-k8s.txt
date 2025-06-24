@@ -1,0 +1,38 @@
+#Thực hiện trên server master-storage
+mkdir -p /data/nfs-shared/vault
+
+#tren cum k8s
+#Tạo pv vault
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: vault-pv
+  namespace: shopnow
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: /data/nfs-shared/vault
+    server: 192.168.100.112
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+
+#Thực hiện trên server k8s-master-1 user devops
+#Cài đặt vault helm chart
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+kubectl create ns vault
+helm upgrade --install vault hashicorp/vault --namespace vault -f values.yaml
+
+#values.yaml 
+server:
+  dataStorage:
+    enabled: true
+    size: 5Gi
+    storageClass: "nfs-storage"
+    accessMode: ReadWriteOnce
+    mountPath: "/vault/data"
+
+

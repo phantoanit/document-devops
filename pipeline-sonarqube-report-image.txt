@@ -1,0 +1,58 @@
+#pipeline gitlab ci
+sonarqube-report:
+  stage: report
+  image: node:20
+  before_script:
+    # - echo "192.168.100.117 sonarqube.toandevops.click" >> /etc/hosts
+    - apt-get update && apt-get install -y chromium
+    - npm install puppeteer
+  script:
+    - |
+      cat > screenshot.js <<'EOF'
+      const puppeteer = require('puppeteer');
+
+      (async () => {
+        const projectId = process.env.CI_PROJECT_NAME;
+        const commitShortSha = process.env.CI_COMMIT_SHORT_SHA;
+
+        const browser = await puppeteer.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          executablePath: '/usr/bin/chromium'
+        });
+
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1920, height: 1080 });
+
+        await page.goto('<SonarqubeServer_URL>/sessions/new?return_to=%2F', { waitUntil: 'networkidle2' });
+
+        await page.waitForSelector('#login-input', { timeout: 10000 });
+        await page.type('#login-input', '<SonarqubeServer_User>');
+
+        await page.waitForSelector('#password-input', { timeout: 10000 });
+        await page.type('#password-input', '<SonarqubeServer_Password>');
+
+        await Promise.all([
+          page.click('button[type="submit"]'),
+          page.waitForNavigation({ waitUntil: 'networkidle2' })
+        ]);
+
+        const issuesUrl = `<SonarqubeServer_URL>/project/issues?id=${projectId}&issueStatuses=OPEN%2CCONFIRMED&types=VULNERABILITY`;
+        await page.goto(issuesUrl, { waitUntil: 'networkidle2' });
+
+        await page.screenshot({ path: 'sonar-report.png', fullPage: true });
+
+        await browser.close();
+      })();
+      EOF
+
+    - node screenshot.js
+
+    - |
+      curl -s -X POST https://api.telegram.org/bot<Telegram_Token>/sendPhoto 
+        -F chat_id=<Telegram_ChatID> 
+        -F photo=@sonar-report.png 
+        -F caption="SonarQube Report for *${CI_PROJECT_NAME}* (${CI_COMMIT_SHORT_SHA})" 
+        -F parse_mode=Markdown
+  tags:
+    - runner-shared-1

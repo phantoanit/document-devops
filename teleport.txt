@@ -1,0 +1,190 @@
+# Thực hiện trên server Teleport (cài version cũ để upgrade)
+wget https://get.gravitational.com/teleport-v13.2.0-linux-amd64-bin.tar.gz
+tar -xzf teleport-v13.2.0-linux-amd64-bin.tar.gz
+mv teleport/tctl /usr/local/bin/
+mv teleport/tsh /usr/local/bin/
+mv teleport/teleport /usr/local/bin/
+
+teleport version && tctl version && tsh version
+mkdir -p /etc/teleport
+
+#Tạo file cấu hình teleport
+vi /etc/teleport/teleport.yaml
+
+version: v3
+teleport:
+  nodename: teleport
+  data_dir: /var/lib/teleport
+  log:
+    output: stderr
+    severity: INFO
+    format:
+      output: text
+  ca_pin: ""
+  diag_addr: ""
+auth_service:
+  enabled: "yes"
+  listen_addr: 0.0.0.0:3025
+  cluster_name: teleport-onpre.toandevops.click
+  proxy_listener_mode: multiplex
+ssh_service:
+  enabled: "yes"
+proxy_service:
+  enabled: "yes"
+  web_listen_addr: 0.0.0.0:443
+  public_addr: teleport-onpre.toandevops.click:443
+  https_keypairs: []
+  https_keypairs_reload_interval: 0s
+
+#Tạo file service
+vi /etc/systemd/system/teleport.service
+
+[Unit]
+Description=Teleport Service
+Documentation=https://gravitational.com/teleport/docs
+After=network.target
+
+[Service]
+User=root
+ExecStart=/usr/local/bin/teleport start --config=/etc/teleport/teleport.yaml
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+
+# Khởi động teleport
+systemctl daemon-reload
+systemctl start teleport
+systemctl status teleport
+
+#Thực hiện trên server Loadbalancer
+apt install apache2-utils certbot python3-certbot-nginx -y
+sudo certbot certonly --standalone -d teleport-onpre.toandevops.click --preferred-challenges http --agree-tos -m $EMAIL --keep-until-expiring
+
+#Tạo file cấu hình nginx
+vi /etc/nginx/conf.d/lb.conf
+
+server {
+    server_name teleport-onpre.toandevops.click;                                                                                                                                                                                                                                            location / {
+        proxy_pass https://192.168.100.103:443;
+        proxy_http_version 1.1;                                                                                                                     proxy_set_header Host $host;                                                                                                                proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }                                                                                                                                                                                                                                                                                       listen 443 ssl;                                                                                                                             ssl_certificate /etc/letsencrypt/live/teleport-onpre.toandevops.click/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/teleport-onpre.toandevops.click/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;                                                                                                                                                                                                                                      }                                                                                                                                           server {
+    if ($host = teleport.toandevops.lab) {                                                                                                         return 301 https://$host$request_uri;
+    }                                                                                                                                                                                                                                                                                       listen 80;
+    server_name nginx.elroydev.tech;                                                                                                            return 404;                                                                                                                             }
+
+# Copy chứng chỉ sang server teleport
+scp /etc/letsencrypt/live/teleport-onpre.toandevops.click/fullchain.pem root@192.168.100.103:/etc/teleport/teleport.crt
+scp /etc/letsencrypt/live/teleport-onpre.toandevops.click/privkey.pem root@192.168.100.103:/etc/teleport/teleport.key
+
+# Thực hiện trên server Teleport
+
+#Cấp quyền thực thi cho file cert
+chmod 600 /etc/teleport/teleport.key
+chmod 644 /etc/teleport/teleport.crt
+
+#Cập nhật lại cấu hình teleport nội dung cấu hình
+version: v3
+teleport:
+  nodename: teleport
+  data_dir: /var/lib/teleport
+  log:
+    output: stderr
+    severity: INFO
+    format:
+      output: text
+  ca_pin: ""
+  diag_addr: ""
+auth_service:
+  enabled: "yes"
+  listen_addr: 0.0.0.0:3025
+  cluster_name: teleport-onpre.toandevops.click
+  proxy_listener_mode: multiplex
+ssh_service:
+  enabled: "yes"
+proxy_service:
+  enabled: "yes"
+  web_listen_addr: 0.0.0.0:443
+  public_addr: teleport-onpre.toandevops.click:443
+  https_keypairs:
+    - cert_file: /etc/teleport/teleport.crt
+      key_file: /etc/teleport/teleport.key
+  https_keypairs_reload_interval: 0s
+
+#Khởi động lại teleport và tạo tài khoản
+systemctl restart teleport
+tctl users add admin --roles=editor,access --logins=root
+
+# Triển khai teleport cloud
+# Cài đặt teleport
+curl https://cdn.teleport.dev/install.sh | bash -s 17.0.5
+teleport configure -o file --acme --acme-email=elroydevops@gmail.com --cluster-name=teleport.toandevops.click
+
+>> Comment phần acme trong file teleport.yaml
+
+#Khởi động dịch vụ
+systemctl enable teleport
+systemctl start teleport
+tctl users add admin --roles=editor,access --logins=root,ubuntu
+
+
+#### rbac:
+#administrator.yaml
+
+kind: role
+version: v7
+metadata:
+  name: administrator
+spec:
+  allow:
+    logins: ["root"]
+    node_labels:
+      "*": "*"
+    kubernetes_groups: ["system:masters"]
+    rules:
+      - resources: ["*"]
+        verbs: ["*"]
+  deny: {}
+
+#devops.yaml
+kind: role
+version: v7
+metadata:
+  name: devops
+spec:
+  allow:
+    logins: ["root"]
+    node_labels: {"*": "*"}
+    kubernetes_labels: {"*": "*"}
+    database_labels: {"*": "*"}
+    app_labels: {"*": "*"}
+    rules:
+      - resources: ["node", "k8s_cluster", "database", "app"]
+        verbs: ["*"]
+  deny:
+    rules:
+      - resources: ["role", "auth_server", "trusted_cluster", "token"]
+        verbs: ["*"]
+
+#base.yaml
+kind: role
+version: v7
+metadata:
+  name: base
+spec:
+  allow:
+    logins: ["dev1"]
+  deny:
+    rules:
+      - resources: ["node"]
+        verbs: ["*"]
+
+

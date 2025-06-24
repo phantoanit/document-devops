@@ -1,0 +1,1 @@
+sudo certbot certonly --standalone -d gitlab.toandevops.click --preferred-challenges http --agree-tos -m $EMAIL --keep-until-expiring

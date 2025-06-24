@@ -1,0 +1,67 @@
+# khong su dung artifact
+# pipeline .gitlab-ci.yml
+sonarqube-check:
+  stage: sonar
+  image: maven:3.9.9-eclipse-temurin-17
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+    SONAR_HOST_URL: "<SonarQubeServer_URL>"
+    SONAR_TOKEN: "<SonarQubeServer_TOKEN>"
+  before_script:
+    # - echo "192.168.100.117 sonarqube.toandevops.click" >> /etc/hosts
+    - apt-get update && apt-get install -y wget unzip
+    - wget --tries=3 https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.1.0.4889-linux-x64.zip
+    - unzip sonar-scanner-cli-7.1.0.4889-linux-x64.zip
+    - mv sonar-scanner-7.1.0.4889-linux-x64 /opt/sonar-scanner
+    - export PATH=$PATH:/opt/sonar-scanner/bin
+  script:
+    - mvn clean compile
+    - sonar-scanner -Dsonar.java.binaries="./target/classes" -Dsonar.sources="./src/" -Dsonar.projectKey=${CI_PROJECT_NAME} -Dsonar.projectName="$CI_PROJECT_NAME" -Dsonar.projectVersion="${CI_COMMIT_SHORT_SHA}"
+  allow_failure: true
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+      - ~/.m2/repository
+  tags:
+    - runner-shared-1
+
+# su dung artifact
+build:
+  stage: build
+  image: maven:3.9.9-eclipse-temurin-17
+  script:
+    - mvn clean compile
+  cache:
+    key: "maven-dependencies"
+    paths:
+      - ~/.m2/repository
+  artifacts:
+    paths:
+      - target/classes
+    expire_in: 1 hour
+  tags:
+    - runner-shared-1
+
+sonarqube-check:
+  stage: sonar
+  image: 
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+    SONAR_HOST_URL: ""
+    SONAR_TOKEN: ""
+  script:
+    - sonar-scanner -Dsonar.java.binaries="./target/classes" -Dsonar.sources="./src/" -Dsonar.projectKey=${CI_PROJECT_NAME} -Dsonar.projectName="$CI_PROJECT_NAME" -Dsonar.projectVersion="${CI_COMMIT_SHORT_SHA}"
+  allow_failure: true
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  dependencies:
+    - build
+  tags:
+    - runner-shared-1

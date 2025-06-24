@@ -1,0 +1,502 @@
+# scaner toke sqa_7a09c9faf892d14d6dece1b09b30b6c290ffaeec
+## Cài đặt Sonarqube server trên Ubuntu
+
+### Thiết lập Cơ sở dữ liệu PostgreSQL cho SonarQube
+
+SonarQube yêu cầu một cơ sở dữ liệu PostgreSQL để lưu trữ dữ liệu.
+
+**Cài đặt PostgreSQL nếu nó chưa được cài trên server:**
+
+```bash
+$ sudo apt install -y postgresql-common postgresql -y
+```
+
+**Kích hoạt PostgreSQL để nó tự động khởi động cùng hệ thống:**
+
+```bash
+$ sudo systemctl enable postgresql
+```
+
+**Khởi động dịch vụ PostgreSQL:**
+
+```bash
+$ sudo systemctl start postgresql
+```
+
+**Đăng nhập vào máy chủ PostgreSQL dưới quyền người dùng `postgres`:**
+
+```bash
+$ sudo -u postgres psql
+```
+
+**Tạo một role PostgreSQL mới tên là `sonaruser` với mật khẩu mạnh để dùng với SonarQube (thay `your_password` bằng mật khẩu bạn muốn):**
+
+```sql
+postgres=# CREATE ROLE sonaruser WITH LOGIN ENCRYPTED PASSWORD 'your_password';
+```
+
+**Tạo cơ sở dữ liệu mới tên là `sonarqube`:**
+
+```sql
+postgres=# CREATE DATABASE sonarqube;
+```
+
+**Cấp toàn quyền truy cập cơ sở dữ liệu `sonarqube` cho role `sonaruser`:**
+
+```sql
+postgres=# GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonaruser;
+```
+
+**Chuyển sang cơ sở dữ liệu `sonarqube`:**
+
+```sql
+postgres=# \c sonarqube
+```
+
+**Cấp toàn quyền cho role `sonaruser` trên schema `public`:**
+
+```sql
+postgres=# GRANT ALL PRIVILEGES ON SCHEMA public TO sonaruser;
+```
+
+**Thoát khỏi bảng điều khiển PostgreSQL:**
+
+```sql
+postgres=# \q
+```
+
+
+### Cài đặt SonarQube
+
+SonarQube không có sẵn trong các kho phần mềm mặc định trên Ubuntu và yêu cầu OpenJDK 17 để hoạt động.
+
+**Cập nhật danh sách gói phần mềm APT của hệ thống:**
+
+```bash
+$ sudo apt update
+```
+
+**Cài đặt OpenJDK 17:**
+
+```bash
+$ sudo apt install openjdk-17-jdk -y
+```
+
+**Cài đặt công cụ Unzip để giải nén tập tin SonarQube:**
+
+```bash
+$ sudo apt install unzip
+```
+
+**Kiểm tra phiên bản Java đã cài đặt:**
+
+```bash
+$ java -version
+```
+
+**Truy cập trang phát hành SonarQube để kiểm tra và xác minh phiên bản mới nhất cần tải. Ví dụ: `sonarqube-25.2.0.102705.zip`.**
+
+**Tải tập tin nén SonarQube mới nhất:**
+
+```bash
+$ sudo wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-25.2.0.102705.zip
+```
+
+**Giải nén tập tin vừa tải bằng Unzip:**
+
+```bash
+$ unzip sonarqube-25.2.0.102705.zip
+```
+
+**Di chuyển thư mục đã giải nén vào thư mục hệ thống `/opt`:**
+
+```bash
+$ sudo mv sonarqube-25.2.0.102705/ /opt/sonarqube
+```
+
+**Tạo một người dùng hệ thống chuyên biệt tên là `sonarqube`, không có quyền đăng nhập và không có thư mục home:**
+
+```bash
+$ sudo adduser --system --no-create-home --group --disabled-login sonarqube
+```
+
+**Cấp toàn quyền truy cập thư mục `/opt/sonarqube` cho người dùng `sonarqube`:**
+
+```bash
+$ sudo chown -R sonarqube:sonarqube /opt/sonarqube
+```
+
+### Cấu hình SonarQube
+
+SonarQube yêu cầu một số cấu hình cụ thể để hoạt động tối ưu, bao gồm cấu hình kết nối cơ sở dữ liệu, tùy chọn runtime Java, giới hạn tài nguyên hệ thống và quyền người dùng.
+
+**Mở file cấu hình chính `sonar.properties` của SonarQube:**
+
+```bash
+$ sudo nano /opt/sonarqube/conf/sonar.properties
+```
+
+**Thêm các dòng cấu hình sau vào cuối file. Thay `sonaruser` và `your_password` bằng thông tin người dùng cơ sở dữ liệu PostgreSQL thực tế:**
+
+```ini
+sonar.jdbc.username=sonaruser
+sonar.jdbc.password=your_password
+sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
+sonar.web.javaAdditionalOpts=-server
+sonar.web.host=0.0.0.0
+sonar.web.port=9000
+```
+
+**Lưu và đóng file.**
+
+Cấu hình trên cho phép SonarQube kết nối với cơ sở dữ liệu PostgreSQL và lắng nghe các kết nối trên cổng TCP `9000` từ tất cả các địa chỉ mạng (`0.0.0.0`).
+
+**Mở file `sysctl.conf` để thay đổi giới hạn bộ nhớ hệ thống:**
+
+```bash
+$ sudo nano /etc/sysctl.conf
+```
+
+**Thêm các dòng sau vào cuối file:**
+
+```ini
+vm.max_map_count=524288
+fs.file-max=131072
+```
+
+**Lưu và đóng file.**
+
+Giải thích:
+
+* `vm.max_map_count=524288`: Tăng số lượng bản đồ bộ nhớ mà Elasticsearch có thể sử dụng, giúp xử lý lượng dữ liệu lớn.
+* `fs.file-max=131072`: Tăng số lượng tệp tối đa mà Elasticsearch có thể mở, giúp vận hành hiệu quả hơn.
+
+> **Lưu ý:** SonarQube sử dụng Elasticsearch để lưu trữ chỉ mục trong hệ thống tệp ánh xạ bộ nhớ (memory-mapped). Việc điều chỉnh giới hạn hệ thống giúp cải thiện tính ổn định và hiệu suất của SonarQube.
+
+
+**Tạo file cấu hình giới hạn tài nguyên cho SonarQube tại `/etc/security/limits.d/99-sonarqube.conf`:**
+
+```bash
+$ sudo nano /etc/security/limits.d/99-sonarqube.conf
+```
+
+**Thêm các dòng sau để tăng giới hạn số lượng tệp và tiến trình mà SonarQube có thể sử dụng:**
+
+```ini
+sonarqube   -   nofile   131072
+sonarqube   -   nproc    8192
+```
+
+**Lưu và đóng file.**
+
+Giải thích:
+
+* `nofile=131072`: Tăng số lượng tệp mở tối đa, cho phép SonarQube xử lý tải lớn.
+* `nproc=8192`: Tăng giới hạn tiến trình, giúp tránh lỗi khi hoạt động ở mức độ đồng thời cao.
+
+### Thiết lập SonarQube như một Dịch vụ Hệ thống
+
+Hãy làm theo các bước dưới đây để thiết lập một dịch vụ hệ thống mới cho SonarQube nhằm quản lý quá trình chạy ứng dụng trên máy chủ.
+
+**Tạo file dịch vụ mới `sonarqube.service`:**
+
+```bash
+$ sudo nano /etc/systemd/system/sonarqube.service
+```
+
+**Thêm nội dung cấu hình sau vào file:**
+
+```ini
+[Unit]
+Description=SonarQube service
+After=syslog.target network.target
+
+[Service]
+Type=forking
+
+ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+
+User=sonarqube
+Group=sonarqube
+PermissionsStartOnly=true
+Restart=always
+
+StandardOutput=syslog
+LimitNOFILE=131072
+LimitNPROC=8192
+TimeoutStartSec=5
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Lưu và đóng file.**
+
+Cấu hình trên sẽ tạo một dịch vụ hệ thống mới cho SonarQube để giám sát và quản lý các tiến trình ứng dụng.
+
+
+**Tải lại cấu hình của `systemd` để áp dụng thay đổi dịch vụ:**
+
+```bash
+$ sudo systemctl daemon-reload
+```
+
+**Kích hoạt SonarQube để tự động khởi động cùng hệ thống:**
+
+```bash
+$ sudo systemctl enable sonarqube
+```
+
+**Khởi động dịch vụ SonarQube:**
+
+```bash
+$ sudo systemctl start sonarqube
+```
+
+**Kiểm tra trạng thái dịch vụ SonarQube và xác nhận rằng nó đang chạy:**
+
+```bash
+$ sudo systemctl status sonarqube
+```
+
+**Khởi động lại máy chủ để áp dụng các thay đổi cài đặt SonarQube:**
+
+```bash
+$ sudo reboot now
+```
+
+### Truy cập SonarQube
+
+SonarQube cung cấp một giao diện đồ họa trên nền web để quản lý chất lượng mã nguồn, các dự án, lỗi và bảo mật.
+
+**Truy cập giao diện web SonarQube bằng cách mở trình duyệt và đi đến địa chỉ sau (thay bằng IP máy chủ):**
+
+```
+http://<ĐỊA_CHỈ_IP_HOẶC_TÊN_MIỀN_CỦA_BẠN>:9000
+```
+
+**Khi được yêu cầu đăng nhập, sử dụng thông tin tài khoản mặc định sau:**
+
+* **Tên đăng nhập:** `admin`
+* **Mật khẩu:** `admin`
+
+### Cấu hình thêm (Domain)
+
+### Cài đặt Nginx
+
+**Cài đặt các gói phụ thuộc cần thiết để cài Nginx:**
+
+```bash
+$ sudo apt install curl gnupg2 ca-certificates lsb-release ubuntu-keyring -y
+```
+
+**Nhập khóa GPG để xác thực Nginx:**
+
+```bash
+$ curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
+| sudo tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+```
+
+**Thêm kho lưu trữ của Nginx phiên bản ổn định:**
+
+```bash
+$ echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg arch=amd64] \
+http://nginx.org/packages/ubuntu `lsb_release -cs` nginx" \
+| sudo tee /etc/apt/sources.list.d/nginx.list
+```
+
+**Cập nhật danh sách gói phần mềm:**
+
+```bash
+$ sudo apt update
+```
+
+**Cài đặt Nginx:**
+
+```bash
+$ sudo apt install nginx
+```
+
+**Khởi động dịch vụ Nginx:**
+
+```bash
+$ sudo systemctl start nginx
+```
+
+### Cài đặt SSL
+
+**Cài đặt Snapd để hỗ trợ Certbot (SSL):**
+
+```bash
+$ sudo snap install core
+$ sudo snap refresh core
+```
+
+**Cài đặt Certbot:**
+
+```bash
+$ sudo snap install --classic certbot
+```
+
+**Tạo liên kết biểu tượng để có thể gọi Certbot dễ dàng:**
+
+```bash
+$ sudo ln -s /snap/bin/certbot /usr/bin/certbot
+```
+
+**Cấp chứng chỉ SSL cho domain của bạn (thay địa chỉ email và domain phù hợp):**
+
+```bash
+$ sudo certbot certonly --nginx --agree-tos --no-eff-email --staple-ocsp --preferred-challenges http -m name@example.com -d sonarqube.example.com
+```
+
+**Tạo nhóm chứng chỉ Diffie-Hellman để tăng cường bảo mật:**
+
+```bash
+$ sudo openssl dhparam -dsaparam -out /etc/ssl/certs/dhparam.pem 4096
+```
+
+**Chạy thử quy trình tự động gia hạn SSL để đảm bảo hoạt động tốt:**
+
+```bash
+$ sudo certbot renew --dry-run
+```
+
+### Cấu hình Nginx
+
+**Mở file cấu hình chính của Nginx:**
+
+```bash
+$ sudo nano /etc/nginx/nginx.conf
+```
+
+**Tìm dòng:**
+
+```nginx
+include /etc/nginx/conf.d/*.conf;
+```
+
+**Và thêm dòng sau ngay bên dưới:**
+
+```nginx
+server_names_hash_bucket_size  64;
+```
+
+**Lưu và thoát**
+
+**Tạo file cấu hình SonarQube cho Nginx:**
+
+```bash
+$ sudo nano /etc/nginx/conf.d/sonar.conf
+```
+
+**Dán nội dung cấu hình sau (chỉnh sửa domain cho phù hợp):**
+
+```nginx
+# Redirect HTTP to HTTPS
+server {
+    listen 80 default_server;
+    server_name sonarqube.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name sonarqube.example.com;
+
+    http2_push_preload on;
+
+    ssl_certificate /etc/letsencrypt/live/sonarqube.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sonarqube.example.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/sonarqube.example.com/chain.pem;
+    ssl_session_timeout 1d;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384';
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:50m;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_dhparam /etc/ssl/certs/dhparam.pem;
+
+    access_log /var/log/nginx/sonarqube.access.log main;
+    error_log  /var/log/nginx/sonarqube.error.log;
+
+    location / {
+        proxy_set_header Connection "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:9000;
+    }
+}
+```
+
+**Lưu và thoát**
+
+**Kiểm tra cú pháp cấu hình của Nginx:**
+
+```bash
+$ sudo nginx -t
+```
+
+**Khởi động lại Nginx để áp dụng cấu hình:**
+
+```bash
+$ sudo systemctl restart nginx
+```
+
+
+## cai qua docker compose
+version: "3.8"
+
+services:
+  sysctl:
+    image: alpine
+    privileged: true
+    command: sh -c "sysctl -w vm.max_map_count=262144"
+    restart: on-failure
+    network_mode: none
+
+  sonarqube:
+    image: sonarqube:community
+    depends_on:
+      - db
+      - sysctl
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://db:5432/sonar
+      - SONAR_JDBC_USERNAME=sonar
+      - SONAR_JDBC_PASSWORD=sonar
+    ports:
+      - "80:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    networks:
+      - sonar-net
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_DB=sonar
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - sonar-net
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+  postgresql_data:
+
+networks:
+  sonar-net:
+    driver: bridge
