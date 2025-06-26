@@ -1,0 +1,29 @@
+auth:
+  username: sampleuser
+  password: samplepass
+  database: sampledb
+
+primary:
+  persistence:
+    enabled: false
+  initdb:
+    scripts:
+      init.sql: |
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL
+        );
+
+        INSERT INTO users (name) VALUES
+          ('Alice'),
+          ('Bob'),
+          ('Charlie');
+
+###
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+#helm pull bitnami/postgresql
+#tar -xzf postgresql-16.7.13.tgz
+helm install userapp-postgres bitnami/postgresql -f postgres-values.yaml -n userapp-be
+kubectl exec -it userapp-postgres-postgresql-0 -n userapp-be -- psql -U sampleuser -d sampledb
+
