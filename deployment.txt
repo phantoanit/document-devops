@@ -21,6 +21,8 @@ Cập nhật Deployment bằng cách thay đổi hình ảnh container
 
 # kubectl set image deployment/<ten-deployment> <ten-container>=<ten-image>:<tag-moi>
  
+redeploy lai
+kubectl rollout restart deployment <deployment-name> -n <namespace>
 
 Rollback Deployment về phiên bản trước
 
