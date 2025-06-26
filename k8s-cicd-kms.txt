@@ -23,11 +23,11 @@ build:
     - apk add --no-cache curl jq
     - echo "192.168.100.116 harbor.toandevops.click" >> /etc/hosts
     - >
-      SECRETS=$(curl -s --header "X-Vault-Token: your_token"
+      DATAVAULT=$(curl -s --header "X-Vault-Token: your_token"
       --request GET "https://vault.toandevops.click/v1/kv/data/shopnow/registry" | jq -r '.data.data')
-    - REGISTRY_USERNAME=$(echo $SECRETS | jq -r '.username')
-    - REGISTRY_PASSWORD=$(echo $SECRETS | jq -r '.password')
-    - REGISTRY_URL=$(echo $SECRETS | jq -r '.url')
+    - REGISTRY_USERNAME=$(echo $DATAVAULT | jq -r '.username')
+    - REGISTRY_PASSWORD=$(echo $DATAVAULT | jq -r '.password')
+    - REGISTRY_URL=$(echo $DATAVAULT | jq -r '.url')
 
     - docker login -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" "$REGISTRY_URL"
     # - docker push $DOCKER_IMAGE
