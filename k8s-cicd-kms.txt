@@ -1,0 +1,43 @@
+#.gitlab-ci.yml
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_IMAGE: harbor.toandevops.click/shopnow/user-service:$CI_COMMIT_SHORT_SHA
+
+build:
+  stage: build
+  image: docker:20-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: ""
+  services:
+    - name: docker:20-dind
+      alias: docker
+      command: ["--tls=false"]
+  script:
+    # - docker info
+    # - docker build -t $DOCKER_IMAGE .
+    - apk add --no-cache curl jq
+    - echo "192.168.100.116 harbor.toandevops.click" >> /etc/hosts
+    - >
+      SECRETS=$(curl -s --header "X-Vault-Token: hvs.CAESIGUQBVI8GfMost8EQ-YLLX9QG2naFppK2Hp4lCSz2N2fGh4KHGh2cy5BOU5EQnpkQjJrWW5jS1hBYklCdzBrcXI"
+      --request GET "https://vault.toandevops.click/v1/kv/data/shopnow/registry" | jq -r '.data.data')
+    - REGISTRY_USERNAME=$(echo $SECRETS | jq -r '.username')
+    - REGISTRY_PASSWORD=$(echo $SECRETS | jq -r '.password')
+    - REGISTRY_URL=$(echo $SECRETS | jq -r '.url')
+
+    - docker login -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" "$REGISTRY_URL"
+    # - docker push $DOCKER_IMAGE
+  tags:
+    - runner-shared-1
+
+# deploy:
+#   stage: deploy
+#   image: bitnami/kubectl:latest
+#   script:
+#     - kubectl set image deployment/shopnow-user-service-deployment shopnow-user-service=harbor.toandevops.click/shopnow/user-service:207a5665 -n shopnow
+#   tags:
+#     - runner-shared-1
