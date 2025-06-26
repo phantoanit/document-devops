@@ -23,7 +23,7 @@ build:
     - apk add --no-cache curl jq
     - echo "192.168.100.116 harbor.toandevops.click" >> /etc/hosts
     - >
-      SECRETS=$(curl -s --header "X-Vault-Token: hvs.CAESIGUQBVI8GfMost8EQ-YLLX9QG2naFppK2Hp4lCSz2N2fGh4KHGh2cy5BOU5EQnpkQjJrWW5jS1hBYklCdzBrcXI"
+      SECRETS=$(curl -s --header "X-Vault-Token: your_token"
       --request GET "https://vault.toandevops.click/v1/kv/data/shopnow/registry" | jq -r '.data.data')
     - REGISTRY_USERNAME=$(echo $SECRETS | jq -r '.username')
     - REGISTRY_PASSWORD=$(echo $SECRETS | jq -r '.password')
