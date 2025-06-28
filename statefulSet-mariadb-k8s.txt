@@ -1,3 +1,10 @@
+#Chỉnh sửa cấu hình NFS server 
+sudo vi /etc/exports
+ket qua: /data *(rw,sync,no_subtree_check,no_root_squash)
+sudo exportfs -rav
+sudo systemctl restart nfs-server
+
+
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
