@@ -28,7 +28,7 @@ export BUCKET="your-bucket-name"
 #Cài đặt Velero với MinIO làm backend lưu trữ các bản sao lưu của Kubernetes
 velero install 
   --provider aws 
-  --bucket $MINIO_BUCKET 
+  --bucket $BUCKET 
   --secret-file <(echo -e "[default]naws_access_key_id=$MINIO_ACCESS_KEY_IDnaws_secret_access_key=$MINIO_SECRET_KEY_ID") 
   --use-node-agent 
   --backup-location-config region=minio,s3ForcePathStyle="true",s3Url=$MINIO_URL 
