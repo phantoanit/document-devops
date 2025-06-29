@@ -57,6 +57,105 @@ ansible-playbook -vvv ...
 
 
 
+#vi du
+Cài đặt Nginx
+Tạo 1 user tên deploy
+Copy file HTML lên web server
+Render file config từ template
+Khởi động Nginx
+Debug biến hostname
+#inventory.ini
+[webservers]
+192.168.56.10 ansible_user=ubuntu ansible_port=22
+#tao thu muc va cac fie can thiet
+mkdir files templates
+#files/index.html
+<!DOCTYPE html>
+<html>
+  <head><title>Welcome</title></head>
+  <body>
+    <h1>Hello from Ansible!</h1>
+  </body>
+</html>
 
+#templates/nginx.conf.j2
+server {
+    listen 80;
+    server_name {{ inventory_hostname }};
+    root /var/www/html;
+    index index.html;
+}
 
+#Tạo playbook chính site.yml
+---
+- name: Cấu hình web server với Nginx
+  hosts: webservers
+  become: yes
+
+  vars:
+    deploy_user: deploy
+
+  tasks:
+    - name: Cài đặt Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Tạo user deploy
+      user:
+        name: "{{ deploy_user }}"
+        state: present
+        shell: /bin/bash
+
+    - name: Copy file index.html
+      copy:
+        src: files/index.html
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Deploy file cấu hình nginx
+      template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/sites-available/default
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Khởi động và enable nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Debug biến hostname
+      debug:
+        msg: "Đang cấu hình server {{ inventory_hostname }}"
+
+#Chạy playbook
+ansible-playbook -i inventory.ini site.yml
+
+#thu cac task lam viec voi user
+- name: Tạo thư mục riêng cho deploy user
+  file:
+    path: /home/deploy/app
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: '0755'
+
+- name: Tạo file README.txt với user deploy
+  copy:
+    content: "Đây là thư mục deploy app."
+    dest: /home/deploy/app/README.txt
+    owner: deploy
+    group: deploy
+    mode: '0644'
+
+- name: Chạy lệnh kiểm tra user đang chạy
+  shell: whoami
+  become: yes
+  become_user: deploy
 
