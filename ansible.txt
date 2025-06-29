@@ -1,0 +1,62 @@
+#cho phep dang nhap qua user root tren cac may
+vi /etc/ssh/sshd_config
+#permis root login yes
+systemctl restart sshd
+
+#Cài đặt Ansible tren 1 may bat ky
+sudo apt update
+sudo apt install ansible -y
+
+#Tạo SSH key
+ssh-keygen
+
+#copy key sang cac node
+ssh-copy-id root@192.168.1.101
+
+##Test SSH không password:
+ssh root@192.168.1.101 hostname
+
+#Tạo file inventory.ini khai bao cac khoi server
+[webservers]
+192.168.1.10
+192.168.1.11
+
+[dbservers]
+192.168.1.20
+
+#Kiểm tra kết nối SSH
+ansible all -i inventory.ini -m ping -u your_user
+
+# vi du mot playbook cai nginx
+#install_nginx.yml
+---
+- name: Cài đặt Nginx trên web servers
+  hosts: webservers
+  become: yes   # chạy với quyền sudo
+  tasks:
+    - name: Cài nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Khởi động và enable nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+#chay playbook
+ansible-playbook -i inventory.ini install_nginx.yml -u your_user
+
+# cách debug & kiểm tra idempotency
+#Dùng --check để chạy dry-run:
+ansible-playbook -i inventory.ini install_nginx.yml -u your_user --check
+#Dùng -vvv để xem debug log:
+ansible-playbook -vvv ...
+
+
+
+
+
+
