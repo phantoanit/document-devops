@@ -1,3 +1,11 @@
+# neu muon su dung o cung ngoai de lu tru
+#Gán disk (ổ cứng) vào trong thư mục /data
+sudo mkfs.ext4 -m 0 /dev/sdb
+mkdir /data
+echo "/dev/sdb  /data  ext4  defaults  0  0" | sudo tee -a /etc/fstab
+mount -a
+sudo df -h
+
 #cai dat cac cong cu
 apt update
 apt install docker.io docker-compose -y
