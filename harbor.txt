@@ -3,6 +3,7 @@
 # cd harbor/
 # cp harbor.yml.tmpl harbor.yml
 # sudo certbot certonly --standalone -d harbor.toandevops.click --preferred-challenges http --agree-tos -m elroydevops@gmail.com --keep-until-expiring
+#### sua file harbor.yml cau hinh domain va cert
 # ./prepare
 # ./install.sh
 
