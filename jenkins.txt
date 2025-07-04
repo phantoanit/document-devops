@@ -11,7 +11,13 @@
 # apt install jenkins -y
 # systemctl start jenkins
 
-
+## cai jenkin agent tren server su dung, cai java version cung version java tren server jenkins
+# tren server cai jenkins agent
+adduser jenkins
+mkdir /var/lib/jenkins
+chown -R jenkins. /var/lib/jenkins
+# ket noi jenkins agent voi jenkins server su dung secret stored in a file
+# chay jenkins agent voi system service file
 
 # tao service File /etc/systemd/system/jenkins-agent.service
 [Unit]
@@ -29,3 +35,18 @@ Restart=always
 WantedBy=multi-user.target
 
 /etc/systemd/system/jenkins-agent.service
+
+
+# tren server jenkins mo port tcp de jenkins agent ket noi
+
+# tren server gitlab tao tai khoan jenkin de jenkins server ket noi
+# tren server gitlab mo setting -> network -> mo outbound request 
+
+# tren server jenkins vao manage jenkins -> system: cau hinh executors, lables, gitlab: ket noi qua token hoac user name
+# tren server jenkins: tao job, tao pipeline, cau hinh pipeline: discard old build, build triggers: build when a change is pushed(push events, accepted merge request events), pipeline: pipeline script from scm(url git, branch build)
+# tren server jenkins tao user token de gitlab ket noi: user -> configure -> api token generate
+
+# tren server gitlab cau hinh webhook, co thay doi source code se goi den jenkins
+# cau hinh webhook url: http://<username-jenkins>:<token-jenkins>@<domain-hoac-api-dia-chi-jenkin>/project/<path-project-in-jenkins>
+# cau hinh webhook su dung push event, tag push event
+  
