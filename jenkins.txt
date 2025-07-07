@@ -37,7 +37,7 @@ WantedBy=multi-user.target
 /etc/systemd/system/jenkins-agent.service
 
 
-# tren server jenkins mo port tcp de jenkins agent ket noi
+# tren server jenkins ban cu can mo port tcp de jenkins agent ket noi
 
 # tren server gitlab tao tai khoan jenkin de jenkins server ket noi
 # tren server gitlab mo setting -> network -> mo outbound request 
