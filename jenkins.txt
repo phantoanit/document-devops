@@ -11,7 +11,7 @@
 # apt install jenkins -y
 # systemctl start jenkins
 
-## cai jenkin agent tren server su dung, cai java version cung version java tren server jenkins
+## cai jenkin agent tren server su dung, cai java version cung version java tren server jenkins, cac buoc cai tuong tu ben tren
 # tren server cai jenkins agent
 adduser jenkins
 mkdir /var/lib/jenkins
