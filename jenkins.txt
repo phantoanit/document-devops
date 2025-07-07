@@ -46,7 +46,7 @@ WantedBy=multi-user.target
 # tren server jenkins: tao job, tao pipeline, cau hinh pipeline: discard old build, build triggers: build when a change is pushed(push events, accepted merge request events), pipeline: pipeline script from scm(url git, branch build)
 # tren server jenkins tao user token de gitlab ket noi: user -> configure -> api token generate
 
-# tren server gitlab cau hinh webhook, co thay doi source code se goi den jenkins
+# tren server gitlab cau hinh webhook tren project can lang nghe, co thay doi source code se goi den jenkins
 # cau hinh webhook url: http://<username-jenkins>:<token-jenkins>@<domain-hoac-api-dia-chi-jenkin>/project/<path-project-in-jenkins>
 # cau hinh webhook su dung push event, tag push event
   
