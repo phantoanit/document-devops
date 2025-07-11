@@ -10,9 +10,9 @@ apt install zabbix-server-mysql zabbix-frontend-php zabbix-apache-conf zabbix-sq
 #cai dat db mysql lu du lieu
 apt install software-properties-common -y
 curl -LsS -O https://downloads.mariadb.com/MariaDB/mariadb_repo_setup
-sudo bash mariadb_repo_setup
+sudo bash mariadb_repo_setup  --mariadb-server-version=10.6
 apt update -y
-apt install mariadb-server -y
+apt install mariadb-server-10.6 -y
 
 mysql -u root
 create database zabbix character set utf8mb4 collate utf8mb4_bin;
