@@ -61,7 +61,7 @@ Hostname=abc-server-ipaddress
 systemctl restart zabbix-agent
 #tren giao dien quan tri zabbix,muc monitoring, add host de quan ly
 Host name
-Templates: linux by zabbix agent
+Templates: select template, select linux by zabbix agent
 Host group: linux server
 Interfaces: Agent(ip, port)
 
