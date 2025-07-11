@@ -1,0 +1,64 @@
+#ubuntu
+#Install Zabbix repository
+wget https://repo.zabbix.com/zabbix/6.0/ubuntu-arm64/pool/main/z/zabbix-release/zabbix-release_latest_6.0+ubuntu20.04_all.deb
+dpkg -i zabbix-release_latest_6.0+ubuntu20.04_all.deb
+apt update
+
+#Install Zabbix server, frontend, agent
+apt install zabbix-server-mysql zabbix-frontend-php zabbix-apache-conf zabbix-sql-scripts zabbix-agent -y
+
+#cai dat db mysql lu du lieu
+apt install mariadb-server -y
+mysql -u root
+create database zabbix character set utf8mb4 collate utf8mb4_bin;
+create user zabbix@localhost identified by 'password';
+grant all privileges on zabbix.* to zabbix@localhost;
+set global log_bin_trust_function_creators = 1;
+quit;
+
+#host import initial schema and data
+#yeu cau password thi nhap pass da tao ben tren
+zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -uzabbix -p zabbix
+
+#Disable log_bin_trust_function_creators option after importing database schema.
+mysql -uroot -p
+password
+mysql> set global log_bin_trust_function_creators = 0;
+mysql> quit;
+
+#Configure the database for Zabbix server
+#Edit file /etc/zabbix/zabbix_server.conf
+#connect zabbix to mysql
+DBPassword=password
+
+#Start Zabbix server and agent processes
+systemctl restart zabbix-server zabbix-agent apache2
+systemctl enable zabbix-server zabbix-agent apache2
+
+#cau hinh url zabbix
+vi /etc/apache2/sites-available/000-default.conf
+DocumentRoot /usr/share/zabbix/
+
+systemctl restart apache2
+
+#cai zabbix agent tren server can theo doi
+#Install Zabbix repository
+wget https://repo.zabbix.com/zabbix/6.0/ubuntu-arm64/pool/main/z/zabbix-release/zabbix-release_latest_6.0+ubuntu20.04_all.deb
+dpkg -i zabbix-release_latest_6.0+ubuntu20.04_all.deb
+apt update
+apt install zabbix-agent -y
+#cau hinh ket noi
+vi /etc/zabbix/zabbix_agentd.conf
+Server=zabbix.toandevops.click
+ServerActive=zabbix.toandevops.click
+Hostname=abc-server-ipaddress
+
+systemctl restart zabbix-agent
+#tren giao dien quan tri zabbix,muc monitoring, add host de quan ly
+Host name
+Templates: linux by zabbix agent
+Host group: linux server
+Interfaces: Agent(ip, port)
+
+
+
