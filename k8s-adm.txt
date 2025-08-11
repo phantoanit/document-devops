@@ -18,6 +18,7 @@ adduser devops
 
 #cho user devops voi quen sudo
 visudo
+#devops ALL=(ALL:ALL) ALL
 
 su devops
 cd /home/devops
