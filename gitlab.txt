@@ -5,3 +5,43 @@ apt install gitlab-ee=15.7.7-ee.0
 #Tạo chứng chỉ ssl
 sudo certbot certonly --standalone -d gitlab.toandevops.click --preferred-challenges http --agree-tos -m $EMAIL --keep-until-expiring
 
+##gitlab runner
+curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | sudo bash
+apt install gitlab-runner - y
+
+## tao kubeconfig file cho user gitlab-runner tren node control plane
+##sa-token.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-runner-sa-token
+  namespace: gitlab-runner
+  annotations:
+    kubernetes.io/service-account.name: gitlab-runner-sa
+type: kubernetes.io/service-account-token
+
+##kubeconfig
+SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+CA_CERT=$(kubectl get secret gitlab-runner-sa-token -n gitlab-runner -o jsonpath='{.data.ca\.crt}')
+
+cat <<EOF > kubeconfig-gitlab
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: $CA_CERT
+    server: $SERVER
+  name: k8s
+contexts:
+- context:
+    cluster: k8s
+    namespace: default
+    user: gitlab-runner-sa
+  name: gitlab
+current-context: gitlab
+users:
+- name: gitlab-runner-sa
+  user:
+    token: $(kubectl get secret gitlab-runner-sa-token -n gitlab-runner -o jsonpath='{.data.token}' | base64 -d)
+EOF
+
