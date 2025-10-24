@@ -25,3 +25,16 @@ spec:
   maxReplicas: 4
   targetCPUUtilizationPercentage: 50
 
+# cau hinh khi loi khoi tao pod metric-server
+spec:
+  containers:
+  - args:
+    - --secure-port=4443
+    - --kubelet-insecure-tls=true
+  ports:
+    - containerPort: 4443
+
+# test tai
+apk add stress-ng
+stress-ng --cpu 1
+
