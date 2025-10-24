@@ -26,6 +26,8 @@ spec:
   targetCPUUtilizationPercentage: 50
 
 # cau hinh khi loi khoi tao pod metric-server
+kubectl -n kube-system edit deployment metrics-server
+
 spec:
   containers:
   - args:
