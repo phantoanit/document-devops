@@ -1,0 +1,460 @@
+
+
+### ELK ####
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+sudo apt-get install apt-transport-https -y
+echo "deb https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+sudo apt update
+sudo apt install elasticsearch -y
+# thu muc chua data
+sudo mkdir -p /u02/data/elasticsearch
+sudo chown -R elasticsearch:elasticsearch /u02/data/elasticsearch
+sudo chmod -R 755 /u02/data/elasticsearch
+# Cau hinh /etc/elasticsearch/elasticsearch.yml
+cluster.name: my-elk-cluster
+node.name: es-node-1
+network.host: 0.0.0.0       # hoặc IP cụ thể
+http.port: 9200
+discovery.type: single-node
+#cluster.initial_master_nodes //comment khi chay single-node
+path.data: /var/lib/elasticsearch
+
+#cau hinh ram /etc/elasticsearch/jvm.options
+-Xms4g
+-Xmx4g
+
+# khoi dong
+sudo systemctl enable elasticsearch
+sudo systemctl start elasticsearch
+sudo journalctl -u elasticsearch -f
+#lay mat khau user elastic
+sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic
+#tao role va user cho fluentbit ket noi
+curl -u elastic:6yKa0qzlfhQlb*3zDbVt -k -X POST "https://localhost:9200/_security/role/fluentbit_writer" -H 'Content-Type: application/json' -d'
+{
+  "cluster": [],
+  "indices": [
+    {
+      "names": ["fluent-*","k8s-*","logstash-*"],
+      "privileges": ["create_index","create_doc","write","create", "index", "view_index_metadata"]
+    }
+  ]
+}
+'
+
+curl -u elastic:6yKa0qzlfhQlb*3zDbVt -k -X POST "https://localhost:9200/_security/user/fluentbit" -H 'Content-Type: application/json' -d'
+{
+  "password" : "csb@123",
+  "roles" : ["fluentbit_writer"],
+  "full_name" : "Fluent Bit Writer"
+}
+'
+
+#cai kibana
+sudo apt install kibana -y
+#Elasticsearch dùng TLS với CA tự ký, copy CA vào Kibana host
+sudo mkdir -p /etc/kibana/certs
+sudo cp /etc/elasticsearch/certs/http_ca.crt /etc/kibana/certs/
+
+#Tạo Kibana keystore để lưu mật khẩu an toàn
+#tạo keystore nếu chưa có, thuong khi cai da co san
+sudo /usr/share/kibana/bin/kibana-keystore create
+
+#tạo password cho user kibana_system tren elasticsearch, nho luu password
+#kibana_system/csb@123/jDcMQYL_wG7ArQbnjX*3
+sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password -u kibana_system
+# thêm password (chạy interactive hoặc dùng stdin), nhap mat khau cho user kibana_system
+sudo /usr/share/kibana/bin/kibana-keystore add elasticsearch.password
+
+#Cấu hình kibana.yml /etc/kibana/kibana.yml
+server.host: "0.0.0.0"
+server.port: 5601
+server.name: kibana-1
+elasticsearch.hosts: ["https://ES_HOST:9200"]
+elasticsearch.username: "kibana_system"
+# đường dẫn tới CA (self-signed CA) da copy o tren
+elasticsearch.ssl.certificateAuthorities: [ "/etc/kibana/certs/ca.crt" ]
+
+#bat va khoi dong
+sudo systemctl enable kibana
+sudo systemctl start kibana
+sudo journalctl -u kibana -f    # xem log realtime
+#Mở trình duyệt: http://KIBANA_HOST:5601
+# nếu ES có TLS + CA
+curl -u kibana_system:YOUR_PASSWORD --cacert /etc/kibana/certs/http_ca.crt 'https://localhost:9200/_cluster/health?pretty'
+# nếu không có TLS
+curl 'http://ES_HOST:9200/_cluster/health?pretty'
+
+##fluent bit
+kubectl create namespace logging
+
+# tạo secret chứa user/password và CA (nếu ES dùng TLS)
+kubectl create secret generic fluent-bit-es \
+  -n csb-logging \
+  --from-literal=es-user='fluentbit_colombo' \
+  --from-literal=es-pass='csb@123' \
+  --from-file=ca.crt=/etc/elasticsearch/certs/http_ca.crt
+# hoac apply secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fluent-bit-es
+  namespace: csb-logging
+stringData:
+  # Giá trị từ --from-literal
+  es-user: "fluentbit_colombo"
+  es-pass: "csb@123"
+  # Giá trị từ --from-file
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIFaTCCA1GgAwIBAgIUED9SYYTcjuPdue/WVXhkGMqnIV8wDQYJKoZIhvcNAQEL
+
+## apply sa
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: csb-logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-read
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  verbs: ["get","list","watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-read
+subjects:
+- kind: ServiceAccount
+  name: fluent-bit
+  namespace: csb-logging
+
+## apply service
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-external
+  namespace: csb-logging
+spec:
+  ports:
+    - port: 9200
+      protocol: TCP
+      targetPort: 9200
+  clusterIP: None   # Service không cần ClusterIP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: elasticsearch-external
+  namespace: csb-logging
+subsets:
+  - addresses:
+      - ip: 10.0.140.126   # IP LAN của VM Elasticsearch
+    ports:
+      - port: 9200
+
+## apply configmap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: csb-logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+
+    @INCLUDE input-kubernetes.conf
+    @INCLUDE filter-kubernetes.conf
+    @INCLUDE output-elasticsearch.conf
+
+  input-kubernetes.conf: |
+    [INPUT]
+        Name tail
+        Path /var/log/containers/web-*
+        Tag kube.web.*
+        Parser cri
+        Mem_Buf_Limit 512MB
+        Refresh_Interval  10
+        DB                /var/log/flb_kube.db
+        #Skip_Long_Lines On
+        #multiline.parser docker, cri
+        #multiline.parser multiline-regex
+    [INPUT]
+        Name tail
+        Path /var/log/containers/media-*
+        Tag kube.media.*
+        Parser cri
+        Mem_Buf_Limit 512MB
+        Refresh_Interval  10
+        DB                /var/log/flb_kube.db
+        #Skip_Long_Lines On
+        #multiline.parser docker, cri
+        #multiline.parser multiline-regex
+    [INPUT]
+        Name tail
+        Path /var/log/containers/queue-*
+        Tag kube.queue.*
+        Parser cri
+        Mem_Buf_Limit 512MB
+        Refresh_Interval  10
+        DB                /var/log/flb_kube.db
+        #Skip_Long_Lines On
+        #multiline.parser docker, cri
+        #multiline.parser multiline-regex
+    [INPUT]
+        Name tail
+        Path /var/log/containers/convert-*
+        Tag kube.convert.*
+        Parser cri
+        Mem_Buf_Limit 512MB
+        Refresh_Interval  10
+        DB                /var/log/flb_kube.db
+        #Skip_Long_Lines On
+        #multiline.parser docker, cri
+        #multiline.parser multiline-regex
+    [INPUT]
+        Name systemd
+        Tag host.*
+        Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+        Read_From_Tail On
+
+
+  filter-kubernetes.conf: |
+    [FILTER]
+        Name kubernetes
+        Match kube.web.*
+        Kube_URL https://kubernetes.default.svc:443
+        Kube_CA_File /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log On
+        Merge_Log_Trim On
+        Labels On
+        Annotations Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+        Kube_Tag_Prefix kube.web.var.log.containers.
+    [FILTER]
+        Name kubernetes
+        Match kube.media.*
+        Kube_URL https://kubernetes.default.svc:443
+        Kube_CA_File /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log On
+        Merge_Log_Trim On
+        Labels On
+        Annotations Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+        Kube_Tag_Prefix kube.media.var.log.containers.
+    [FILTER]
+        Name kubernetes
+        Match kube.queue.*
+        Kube_URL https://kubernetes.default.svc:443
+        Kube_CA_File /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log On
+        Merge_Log_Trim On
+        Labels On
+        Annotations Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+        Kube_Tag_Prefix kube.queue.var.log.containers.
+    [FILTER]
+        Name kubernetes
+        Match kube.convert.*
+        Kube_URL https://kubernetes.default.svc:443
+        Kube_CA_File /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log On
+        Merge_Log_Trim On
+        Labels On
+        Annotations Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+        Kube_Tag_Prefix kube.convert.var.log.containers.
+    [FILTER]
+        name multiline
+        match *
+        multiline.key_content message
+        multiline.parser multiline-regex
+    [FILTER]
+        Name grep
+        Match *
+        Exclude message /.*PHP Warning:.*/
+        Exclude message /.\/api\/Core\/Client\/deleteAPCUCacheKeys\?.*/
+
+
+  output-elasticsearch.conf: |
+    [OUTPUT]
+        Name es
+        Match kube.web.*
+        Host ${ES_HOST}
+        Index web-service-%Y.%m.%d
+        Port ${ES_PORT}
+        Type            _doc
+        HTTP_User ${ES_USER}
+        HTTP_Passwd ${ES_PASS}
+        tls On
+        tls.verify Off
+        Replace_Dots On
+        Logstash_Format Off
+        Retry_Limit False
+        Suppress_Type_Name On
+        Trace_Error    On
+    [OUTPUT]
+        Name es
+        Match kube.media.*
+        Host ${ES_HOST}
+        Type            _doc
+        Index media-service-%Y.%m.%d
+        Port  ${ES_PORT}
+        HTTP_User ${ES_USER}
+        HTTP_Passwd ${ES_PASS}
+        tls On
+        tls.verify Off
+        Replace_Dots On
+        Logstash_Format Off
+        Retry_Limit False
+        Suppress_Type_Name On
+        Trace_Error    On
+    [OUTPUT]
+        Name es
+        Match kube.queue.*
+        Host ${ES_HOST}
+        Index queue-service-%Y.%m.%d
+        Port ${ES_PORT}
+        Type            _doc
+        HTTP_User ${ES_USER}
+        HTTP_Passwd ${ES_PASS}
+        tls On
+        tls.verify Off
+        Replace_Dots On
+        Logstash_Format Off
+        Retry_Limit False
+        Suppress_Type_Name On
+        Trace_Error    On
+    [OUTPUT]
+        Name es
+        Match kube.convert.*
+        Host ${ES_HOST}
+        Index convert-service-%Y.%m.%d
+        Port ${ES_PORT}
+        Type            _doc
+        HTTP_User ${ES_USER}
+        HTTP_Passwd ${ES_PASS}
+        tls On
+        tls.verify Off
+        Replace_Dots On
+        Logstash_Format Off
+        Retry_Limit False
+        Suppress_Type_Name On
+        Trace_Error    On
+
+
+  parsers.conf: |
+    [PARSER]
+        Name        cri
+        Format      json
+        Time_Keep Off
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+    [MULTILINE_PARSER]
+        name          multiline-regex
+        type          regex
+        flush_timeout 1000
+        # rules |   state name  | regex pattern                             | next state
+        # ------|---------------|-------------------------------------------|-----------
+        rule      "start_state"   "/(\[.*\]) (PHP Fatal.*)/"                           "cont"
+        rule      "cont"          "/(^Stack trace:)|(^#.*)|(^\s+thrown.*)/"   "cont"
+
+
+# apply daemonset
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: csb-logging
+  labels:
+    k8s-app: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      k8s-app: fluent-bit
+  template:
+    metadata:
+      labels:
+        k8s-app: fluent-bit
+    spec:
+      serviceAccountName: fluent-bit
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: fluent-bit
+        image: fluent/fluent-bit:2.2
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+        env:
+        - name: ES_HOST
+          value: "elasticsearch-external"    # sửa theo IP/host ES của bạn
+        - name: ES_PORT
+          value: "9200"
+        - name: ES_USER
+          valueFrom:
+            secretKeyRef:
+              name: fluent-bit-es
+              key: es-user
+        - name: ES_PASS
+          valueFrom:
+            secretKeyRef:
+              name: fluent-bit-es
+              key: es-pass
+        volumeMounts:
+        - name: config
+          mountPath: /fluent-bit/etc/
+        - name: varlog
+          mountPath: /var/log
+        - name: varlib
+          mountPath: /var/lib/containerd
+        - name: varlibdocker
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: tls
+          mountPath: /fluent-bit/tls
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: fluent-bit-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdocker
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: varlib
+        hostPath:
+          path: /var/lib/containerd
+      - name: tls
+        secret:
+          secretName: fluent-bit-es   # chứa ca.crt
+
