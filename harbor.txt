@@ -1,3 +1,56 @@
+sudo apt update
+sudo apt upgrade -y
+sudo apt install -y ca-certificates curl gnupg lsb-release
+
+#Thêm GPG key chính thức của Docker
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+#Thêm Docker repo vào APT
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+#Cài Docker Engine, CLI và Containerd
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl status docker
+sudo systemctl enable --now docker
+docker compose version
+
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -sha512 -days 3650 \
+-subj "/C=VN/ST=HN/L=HN/O=VHV/OU=IT/CN=VHV CA" \
+-key ca.key -out ca.crt
+
+openssl genrsa -out registry.csb.com.key 4096 / harbor.canhsatbien.vn
+openssl req -sha512 -new \
+-subj "/C=VN/ST=HN/L=HN/O=VHV/OU=IT/CN=harbor.canhsatbien.vn" \
+-key harbor.canhsatbien.vn.key \
+-out harbor.canhsatbien.vn.csr
+
+cat > v3.1.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1=harbor.canhsatbien.vn
+EOF
+
+openssl x509 -req -sha512 -days 3650 \
+-extfile v3.1.ext \
+-CA ca.crt -CAkey ca.key -CAcreateserial \
+-in harbor.canhsatbien.vn.csr \
+-out harbor.canhsatbien.vn.crt
+
+mkdir -p /etc/docker/certs.d/registry.csb.com
+cp registry.csb.com.crt registry.csb.com.key ca.crt /etc/docker/certs.d/registry.csb.com/
+
 # curl -s https://api.github.com/repos/goharbor/harbor/releases/latest | grep browser_download_url | cut -d '"' -f 4 | grep '.tgz$' | wget -i -
 # tar xvzf harbor-offline-installer*.tgz
 # cd harbor/
@@ -7,5 +60,17 @@
 # ./prepare
 # ./install.sh
 
+#cau hinh harbor khong tls
+#sua file harbor.yml comment lai block https
+#Mở hoặc tạo file /etc/docker/daemon.json:
+sudo nano /etc/docker/daemon.json
+#Thêm (hoặc sửa) nội dung:
+{
+  "insecure-registries": ["harbor.canhsatbien.vn"]
+}
+#Khởi động lại Docker
+sudo systemctl restart docker
+
+Muốn đổi config -> docker compose down → edit harbor.yml → chạy ./prepare → docker compose up -d
 
 
