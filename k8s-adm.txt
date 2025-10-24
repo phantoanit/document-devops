@@ -135,4 +135,96 @@ sudo systemctl restart containerd kubelet
 #kiem tra
 curl https://harbor.prod.vhv.com
 
+## xy ly Xử lý disk pressure trên node:
+# xoa log container
+sudo journalctl --vacuum-time=1d
+sudo rm -rf /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/*
+# xoa image cu
+crictl rmi --prune
 
+### Khôi phục node NotReady
+#Nguyên nhân thường gặp:
+#-Kubelet ngừng hoạt động
+#-Network giữa node và control plane bị lỗi
+#-Disk full
+#-Docker/containerd gặp sự cố
+Trên node:
+systemctl status kubelet
+journalctl -u kubelet -f
+#Xóa container/image cũ:
+crictl ps -a
+crictl rm <container_id>
+crictl rmi --prune
+#Xóa log container:
+sudo du -sh /var/log/containers
+sudo rm -rf /var/log/containers/*.log
+
+
+## restart rollout calico
+kubectl -n kube-system rollout restart daemonset/calico-node || kubectl -n calico-system rollout restart daemonset/calico-node
+
+## flannel cni
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+#yeu cau khi cai flannel can cau hinh them
+
+sudo modprobe br_netfilter
+echo 'br_netfilter' | sudo tee /etc/modules-load.d/br_netfilter.conf
+# Bật các sysctl cần thiết cho Kubernetes
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+sudo sysctl --system
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+
+## cai metalLB
+kubectl -n kube-system edit configmap kube-proxy
+#Tìm khóa config.conf → đặt:
+mode: "ipvs" # nếu bạn dùng IPVS
+strictARP: true
+#Lưu xong restart kube-proxy:
+kubectl -n kube-system rollout restart ds/kube-proxy
+#cai MetalLB
+helm repo add metallb https://metallb.github.io/metallb
+helm repo update
+helm install metallb metallb/metallb -n metallb-system --create-namespace
+# vi du cau hinh metallb-l2.yaml
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: pool-l2
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.1.240-192.168.1.250
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-adv
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - pool-l2
+# ap dung thu cau hinh
+kubectl apply -f metallb-l2.yaml
+# kiem tra
+kubectl -n metallb-system get ipaddresspools
+kubectl -n metallb-system get l2advertisements
+# kiem tra go loi
+# Trạng thái MetalLB
+kubectl -n metallb-system get pods,svc,ep
+kubectl -n metallb-system logs deploy/controller -f
+kubectl -n metallb-system logs ds/speaker -f
+# Tài nguyên MetalLB
+kubectl -n metallb-system get ipaddresspools,l2advertisements,bgppeers, bgpadvertisements
+# Dịch vụ của bạn
+kubectl get svc -A
+kubectl describe svc echo
+kubectl get endpoints echo
+
+- tim kiem text trong thu muc: grep -R --include="*.yaml" "cpu: " production-bk/
+- tim kiem text va replate: find . -type f -name "*.yaml" -exec sed -i 's#cpu: 1.5#cpu: 1#g' {} +
+- tim kiem file trong thu muc va thu muc con: find . -type f -name "*.txt"
