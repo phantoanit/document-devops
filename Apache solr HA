@@ -1,0 +1,246 @@
+## cai solr va zookeeper
+sudo apt install -y openjdk-17-jdk curl wget tar
+wget https://xcoquan.vn/publish/setup_andv/solrzk_8.4_2025.tgz
+tar -xvzf solrzk_8.4_2025.tgz
+# cai zookeeper cluster 
+wget https://downloads.apache.org/zookeeper/zookeeper-3.9.2/apache-zookeeper-3.9.2-bin.tar.gz
+wget https://archive.apache.org/dist/zookeeper/zookeeper-3.6.2/apache-zookeeper-3.6.2-bin.tar.gz
+cd /u01/colombo
+tar xzf apache-zookeeper-3.9.2-bin.tar.gz
+mv apache-zookeeper-3.9.2-bin zk
+mkdir -p zk/data
+# neu chay test cluster, thu 3 instance tuong ung 3 node, tao 3 thu muc khac nhau
+mkdir -p zk/data/{zk1,zk2,zk3}
+#tao file cau hinh zookeeper 
+cd zk/conf/
+cp zoo_sample.cfg zoo1.cfg zoo2.cfg zoo3.cfg
+
+vi zoo1.cfg
+dataDir=/u01/colombo/zk/data/zk1
+dataLogDir=/u01/colombo/zk/data/zk1
+clientPort=2181 # doi port neu cung node
+initLimit=5
+syncLimit=2
+minSessionTimeout=30000
+maxSessionTimeout=300000
+maxClientCnxns=2000
+snapCount=300000
+4lw.commands.whitelist=*
+preAllocSize=204800
+globalOutstandingLimit=1000
+autopurge.purgeInterval=1
+autopurge.snapRetainCount=3
+admin.enableServer=false
+# Các node trong cluster
+server.1=localhost:2888:3888
+server.2=localhost:2889:3889
+server.3=localhost:2890:3890
+
+#Trên từng node, tạo file myid trong thư mục dữ liệu:
+echo 1 > /u01/colombo/zk/data/zk1/myid
+echo 2 > /u01/colombo/zk/data/zk2/myid
+echo 3 > /u01/colombo/zk/data/zk3/myid
+# khoi dong 
+/u01/colombo/zk/bin/zkServer.sh start /u01/colombo/zk/conf/zoo1.cfg
+/u01/colombo/zk/bin/zkServer.sh start /u01/colombo/zk/conf/zoo2.cfg
+/u01/colombo/zk/bin/zkServer.sh start /u01/colombo/zk/conf/zoo3.cfg
+# kiem tra trang thai
+/u01/colombo/zk/bin/zkServer.sh status /u01/colombo/zk/conf/zoo1.cfg
+/u01/colombo/zk/bin/zkServer.sh status /u01/colombo/zk/conf/zoo2.cfg
+/u01/colombo/zk/bin/zkServer.sh status /u01/colombo/zk/conf/zoo3.cfg
+
+# cai solrCloud
+wget https://downloads.apache.org/lucene/solr/X.Y.Z/solr-X.Y.Z.tgz
+wget https://www.apache.org/dyn/closer.lua/lucene/solr/8.11.1/solr-8.11.1.tgz?action=download
+wget https://dlcdn.apache.org/lucene/solr/9.6.1/solr-9.6.1.tgz
+tar xzf solr-9.6.1.tgz
+#neu chay 3 instance tren 1 node, tao 3 thu muc
+cp -r /u01/colombo/solr-9.6.1 /u01/colombo/solr1
+cp -r /u01/colombo/solr-9.6.1 /u01/colombo/solr2
+cp -r /u01/colombo/solr-9.6.1 /u01/colombo/solr3
+cp -r /u01/colombo/solr-9.6.1/solr/server/solr /u01/colombo/solrdata/solr1
+cp -r /u01/colombo/solr-9.6.1/solr/server/solr /u01/colombo/solrdata/solr2
+cp -r /u01/colombo/solr-9.6.1/solr/server/solr /u01/colombo/solrdata/solr3
+mkdir -p /u01/colombo/var/log/{solr1,solr2,solr3}
+
+vi /u01/colombo/solr1/bin/solr.in.sh
+SOLR_JAVA_MEM="-Xms4g -Xmx4g"
+GCLOG_OPTS=" \
+-verbose:gc \
+-XX:+PrintGCDateStamps \
+-XX:+PrintGCDetails \
+-XX:+PrintAdaptiveSizePolicy \
+-XX:+PrintReferenceGC \
+-XX:+UseGCLogFileRotation \
+-XX:NumberOfGCLogFiles=10 \
+ -XX:GCLogFileSize=10M \
+"
+GC_TUNE=" \
+-XX:+UseG1GC \
+-XX:+PerfDisableSharedMem \
+-XX:+ParallelRefProcEnabled \
+-XX:G1HeapRegionSize=1m \
+-XX:MaxGCPauseMillis=250 \
+-XX:InitiatingHeapOccupancyPercent=75 \
+-XX:+AggressiveOpts \ #neu la java 17 bat co the loi
+"
+ZK_HOST="10.0.140.218:2181,10.0.140.226:2181,10.0.140.230:2181,10.0.140.234:2181,10.0.140.241:2181"
+ZK_CLIENT_TIMEOUT="180000"
+SOLR_JETTY_HOST="0.0.0.0"
+SOLR_HOST="10.0.140.218"
+SOLR_WAIT_FOR_ZK="30"
+SOLR_TIMEZONE="UTC+7"
+ENABLE_REMOTE_JMX_OPTS="false"
+SOLR_OPTS="$SOLR_OPTS -Dsolr.autoSoftCommit.maxTime=15000"
+SOLR_OPTS="$SOLR_OPTS -Dsolr.autoCommit.maxTime=60000"
+SOLR_OPTS="$SOLR_OPTS -Dsolr.autoCommit.openSearcher=false"
+SOLR_PID_DIR=/u01/colombo/solr/bin
+SOLR_HOME=/u01/colombo/solrdata/solr
+LOG4J_PROPS=/u01/colombo/solr/server/resources/log4j2.xml
+SOLR_LOGS_DIR=/u01/colombo/var/log/solr
+SOLR_PORT=8983
+SOLR_AUTH_TYPE="basic"
+SOLR_AUTHENTICATION_OPTS="-Dbasicauth=solr:SolrRocks"
+SOLR_OPTS="$SOLR_OPTS -Dlog4j2.formatMsgNoLookups=true -Dlog4j.configurationFile=file:/u01/colombo/solr/server/resources/log4j2.xml -Djava.net.preferIPv4Stack=true -Dsolr.dns.prevent.reverse.lookup=true"
+
+#neu chay service on dinh thi cau hinh
+vi /u01/colombo/solr1/bin/init.d/solr
+SOLR_INSTALL_DIR="/u01/colombo/solr1"
+SOLR_ENV="/u01/colombo/solr1/bin/solr.in.sh"
+
+
+# khoi dong solr 
+/u01/colombo/solr1/bin/solr start
+/u01/colombo/solr2/bin/solr start
+/u01/colombo/solr3/bin/solr start
+#Kiểm tra:
+/u01/colombo/solr1/bin/solr status
+/u01/colombo/solr2/bin/solr status
+/u01/colombo/solr3/bin/solr status
+curl http://localhost:8983/solr/admin/info/system
+
+# Upload cấu hình Solr vào ZooKeeper, các node sẽ đồng bộ config từ ZooKeeper
+/u01/colombo/solr1/bin/solr zk upconfig -z 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183 -d /u01/colombo/solr1/server/resources -n colombo
+# Tạo collection SolrCloud
+curl "http://localhost:8983/solr/admin/collections?action=CREATE&name=Colombo&numShards=2&replicationFactor=2&maxShardsPerNode=4&collection.configName=colombo&router.field=site"
+action=CREATE	Tác vụ cần thực hiện.
+name=Colombo	Tên collection (chữ hoa/thường phân biệt).
+numShards=2	Số shard (phân vùng dữ liệu).
+replicationFactor=2	Mỗi shard có 2 bản sao (primary + replica).
+maxShardsPerNode=4	Mỗi node Solr có thể chứa tối đa 4 shard.
+collection.configName=colombo	Dùng configset “colombo” bạn đã upload ở bước 1.
+router.field=site	Trường trong tài liệu dùng để phân phối dữ liệu giữa các shard (optional, chỉ cần nếu bạn muốn routing theo giá trị field).
+#Đưa file bảo mật vào ZooKeeper
+vi /u01/colombo/solr1/security.json
+{
+  "authentication": {
+    "blockUnknown": true,
+    "class": "solr.BasicAuthPlugin",
+    "credentials": {
+      "solr":"IV0EHq1OnNrj6gvRCwvFwTrZ1+z1oBbnQdiVC3otuq0= Ndd7LKvVBAaZIF0QAVi1ekCfAJXr1GGfLtRUXhgrF8c=",
+          "colombo":"1AOFkVBx9G0xS0avkwY/ILhM+2TJ5lhc9EjB90wUZXs= wZe/6MpVezkfPpdpeWMYXqdLiSwiwW0RdMtfPm6yXsM=",
+    },
+    "": {
+      "v": 11
+    }
+  },
+  "authorization": {
+    "class": "solr.RuleBasedAuthorizationPlugin",
+    "permissions": [
+      {
+        "name": "all",
+        "role": "admin",
+        "index": 1
+      },
+      {
+        "name": "ui_info_view",
+        "collection": null,
+        "path": [
+          "/admin/info/*",
+          "/admin/zookeeper/*",
+          "/admin/cores",
+          "/admin/metrics"
+        ],
+        "params": {
+          "wt": "json"
+        },
+        "role": [
+          "admin",
+          "application"
+        ],
+        "index": 2
+      },
+      {
+        "name": "ui_collections_view",
+        "collection": null,
+        "path": [
+          "/admin/collections"
+        ],
+        "params": {
+          "action": [
+            "LIST",
+            "CLUSTERSTATUS"
+          ],
+          "wt": "json"
+        },
+        "role": [
+          "admin",
+          "application"
+        ],
+        "index": 3
+      },
+      {
+        "name": "ui_suggestions_view",
+        "collection": null,
+        "path": [
+          "/____v2/cluster/autoscaling/suggestions"
+        ],
+        "params": {
+
+        },
+        "role": [
+          "admin",
+          "application"
+        ],
+        "index": 4
+      },
+      {
+        "name": "collection_admin",
+        "collection": "*",
+        "path": [
+          "/admin/luke",
+          "/admin/mbeans",
+          "/admin/file",
+          "/config",
+          "/select",
+          "/update",
+          "/update/*",
+          "/dataimport"
+        ],
+        "role": [
+          "admin",
+          "application"
+        ],
+        "index": 5
+      }
+    ],
+    "user-role": {
+      "solr": "admin",
+      "colombo": "application",
+    },
+    "": {
+      "v": 10
+    }
+  }
+}
+/u01/colombo/solr1/bin/solr zk cp file:/u01/colombo/solr1/security.json zk:/security.json -z 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
+#Đổi mật khẩu user solr
+curl --user solr:SolrRocks http://localhost:8983/solr/admin/authentication -H 'Content-type:application/json' -d '{"set-user": {"solr":"B1telsolr#2022"}}'
+# kiem tra lai 
+curl --user solr:B1telsolr#2022 "http://localhost:8983/solr/admin/collections?action=clusterstatus"
+curl --user solr:B1telsolr#2022 "http://localhost:8983/solr/admin/info/system"
+#cau hinh production
+curl --user solr:B1telsolr#2022 http://localhost:8983/solr/Colombo/config -H 'Content-type:application/json' -d '{"set-property":{"updateHandler.autoSoftCommit.maxTime":1000,"updateHandler.autoSoftCommit.maxDocs":1000,"updateHandler.autoCommit.maxTime":4000000,"updateHandler.autoCommit.maxDocs":10000000}}'
+
+
+
