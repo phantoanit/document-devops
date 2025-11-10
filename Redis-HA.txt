@@ -1,0 +1,95 @@
+## cai redis cluster shard, toi thieu 3 master, 1 master toi thieu co 1 replica
+su colombo
+# tao thu muc luu data, config, log
+mkdir -p /u01/colombo/redis/{bin,data,conf,logs}
+cd /u01/colombo/redis
+sudo apt install -y build-essential tcl pkg-config
+wget https://download.redis.io/releases/redis-7.4.0.tar.gz
+wget https://download.redis.io/redis-stable.tar.gz?_gl=1*171lrw8*_gcl_au*MTUzNzQxOTg5My4xNzU4MTAwOTQ1
+wget https://download.redis.io/releases/redis-5.0.13.tar.gz
+tar xzf redis-7.4.0.tar.gz
+cd redis-7.4.0
+make -j$(nproc)
+sudo make install PREFIX=/u01/colombo/redis
+# cau hinh node
+vi redis/conf/node.conf
+bind 0.0.0.0
+protected-mode no
+tcp-backlog 65535
+timeout 300
+dir /u01/colombo/redis/data
+loglevel notice
+daemonize yes
+databases 10
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+masterauth Redis2025
+requirepass Redis2025
+replica-read-only yes
+min-replicas-to-write 1
+min-replicas-max-lag 10
+maxmemory 1g
+cluster-node-timeout 5000
+cluster-migration-barrier 1
+repl-timeout 60
+repl-backlog-size 512m
+cluster-enabled yes
+appendonly yes
+
+# khoi dong node
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port $PORT --cluster-config-file /u01/colombo/redis/conf/nodes-${PORT}.conf --dbfilename redis-${PORT}.rdb --logfile /u01/colombo/redis/logs/${PORT}.log --pidfile /u01/colombo/redis/bin/${PORT}.pid
+
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port 7000 --cluster-config-file /u01/colombo/redis/conf/nodes-7000.conf --dbfilename redis-7000.rdb --logfile /u01/colombo/redis/logs/7000.log --pidfile /u01/colombo/redis/bin/7000.pid
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port 7001 --cluster-config-file /u01/colombo/redis/conf/nodes-7001.conf --dbfilename redis-7001.rdb --logfile /u01/colombo/redis/logs/7001.log --pidfile /u01/colombo/redis/bin/7001.pid
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port 7002 --cluster-config-file /u01/colombo/redis/conf/nodes-7002.conf --dbfilename redis-7002.rdb --logfile /u01/colombo/redis/logs/7002.log --pidfile /u01/colombo/redis/bin/7002.pid
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port 7003 --cluster-config-file /u01/colombo/redis/conf/nodes-7003.conf --dbfilename redis-7003.rdb --logfile /u01/colombo/redis/logs/7003.log --pidfile /u01/colombo/redis/bin/7003.pid
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port 7004 --cluster-config-file /u01/colombo/redis/conf/nodes-7004.conf --dbfilename redis-7004.rdb --logfile /u01/colombo/redis/logs/7004.log --pidfile /u01/colombo/redis/bin/7004.pid
+/u01/colombo/redis/bin/redis-server /u01/colombo/redis/conf/node.conf --port 7005 --cluster-config-file /u01/colombo/redis/conf/nodes-7005.conf --dbfilename redis-7005.rdb --logfile /u01/colombo/redis/logs/7005.log --pidfile /u01/colombo/redis/bin/7005.pid
+# khoi dong cluster, redis tu dieu chinh so node master va so node replica theo tham so --cluster-replicas
+/u01/colombo/redis/bin/redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 -a Redis2025
+# kiem tra 
+/u01/colombo/redis/bin/redis-cli -p 7000
+127.0.0.1:7000> cluster info
+127.0.0.1:7000> cluster nodes
+
+## Cài đặt redis và redis-sentinel voi 3 node
+sudo apt install -y lsb-release curl gpg
+curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+sudo apt update -y
+sudo apt install -y redis redis-sentinel
+
+#Cấu hình redis cluster
+#trên server 1
+vi /etc/redis/redis.conf
+bind 0.0.0.0
+masterauth devops
+requirepass devops
+
+#trên server 2 và server 3
+vi /etc/redis/redis.conf
+bind 0.0.0.0
+masterauth devops
+requirepass devops
+replicaof 192.168.213.11 6379 // ip va port master
+
+# Khởi động lại redis tren 3 server
+systemctl restart redis-server
+
+#Cấu hình sentinel
+#trên cả 3 servers
+vi /etc/redis/sentinel.conf
+protected-mode no //Đặt no để cho phép IP khác kết nối
+sentinel monitor mymaster 192.168.213.11 6379 2 //ten cum, ip master, port, tho thieu 2 node de bau chon master
+sentinel auth-pass mymaster devops
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 60000
+sentinel parallel-syncs mymaster 1
+# khoi dong redis sentinel 
+systemctl restart redis-sentinel
+# kiem tra
+redis-cli -p 26379 sentinel masters
+redis-cli -p 26379 sentinel slaves mymaster
+redis-cli -p 26379 sentinel sentinels mymaster
