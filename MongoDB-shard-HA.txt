@@ -1,0 +1,366 @@
+
+##mongodb8
+mkdir /tools
+cd /tools/
+su colombo
+# tai ve source
+wget https://xcoquan.vn/publish/setup_andv/mongodb-8.0.3_ubuntu24.04.tgz
+wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2404-8.2.1.tgz
+# tai ve tool mongosh
+wget https://downloads.mongodb.com/compass/mongosh-2.5.8-linux-x64.tgz
+
+mkdir -p /u01/colombo/etc/mongodb
+mkdir -p /u01/colombo/var/log/mongodb
+mkdir -p /u01/colombo/var/run/mongodb
+
+tar -xzf mongodb-linux-x86_64-ubuntu2404-8.2.1.tgz 
+mv mongodb-linux-x86_64-ubuntu2404-8.2.1 mongodb
+mv mongodb /u01/colombo/
+sudo echo 'export PATH=/u01/colombo/mongodb/bin:$PATH' > /etc/profile.d/mongodb.sh
+sudo chmod +x /etc/profile.d/mongodb.sh
+sudo source /etc/profile.d/mongodb.sh
+mongod --version
+
+tar -xzf mongosh-2.5.8-linux-x64.tgz
+cp mongosh-2.5.8-linux-x64/bin/mongosh /u01/colombo/mongodb/bin
+chown colombo:colombo /u01/colombo/mongodb/bin/mongosh
+mongosh --version
+
+# cai cac goi phu thuoc
+sudo apt-get install libcurl4 libgssapi-krb5-2 libldap-common libwrap0 libsasl2-2 libsasl2-modules libsasl2-modules-gssapi-mit openssl liblzma5
+
+# tao keyfile khi dung internal authentication
+openssl rand -base64 756 > /u01/colombo/mongodb/mongodb-keyfile
+chmod 400 /u01/colombo/mongodb/mongodb-keyfile
+chown colombo:colombo /u01/colombo/mongodb/mongodb-keyfile
+
+# cau hinh shard cho cum bao gom cau hinh node luu config (data, meta), node shard, node router
+
+# cau hinh node luu config data
+# tao duong dan luu storage
+mkdir -p /u01/colombo/mongodb/wtconfig
+vi /u01/colombo/etc/mongodb/wtconfig.conf
+storage:
+        dbPath: "/u01/colombo/mongodb/wtconfig"
+        engine: wiredTiger
+        wiredTiger:
+            engineConfig:
+                cacheSizeGB: 1
+systemLog:
+        destination: file
+        path: "/u01/colombo/var/log/mongodb/wtconfig.log"
+        logAppend: true
+        logRotate: reopen
+net:
+        bindIp: 0.0.0.0
+        port: 27019
+processManagement:
+        fork: true
+        pidFilePath: "/u01/colombo/var/run/mongodb/wtconfig.pid"
+replication:
+        replSetName: wtconfig
+        oplogSizeMB: 256
+sharding:
+        clusterRole: configsvr
+        #archiveMovedChunks: false
+#security:
+#        authorization: enabled
+#        keyFile: "/u01/colombo/mongodb/mongodb-keyfile"
+#        transitionToAuth: true
+
+# khoi dong wtconfig 27019 tren cac node
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf
+# dung cong cu mongosh de cau hinh
+/u01/colombo/mongodb/bin/mongosh --port 27019
+rs.initiate({
+  _id: "wtconfig",
+  configsvr: true,
+  members: [
+    { _id: 0, host: "10.60.155.240:27019", priority: 10 },
+    { _id: 1, host: "10.60.155.188:27019", priority: 2 },
+    { _id: 2, host: "10.60.155.165:27019", priority: 1 }
+  ]
+})
+# tao user voi role root dung khi bat auth
+use admin
+db.createUser({user: "colombo", pwd: "P0rtalmongo#123DLVB", roles: [ { role: "root", db: "admin" } ]})
+# tao role moi co toan quyen
+db.createRole( { role: "executeFunctions", privileges: [ { resource: { anyResource: true }, actions: [ "anyAction" ] } ], roles: [] } )
+# Cấp quyền role vừa tạo cho user colombo
+db.grantRolesToUser("colombo",["executeFunctions"])
+
+# cau hinh tren cac shard
+# Primary ghi full tốc độ, không quan tâm Secondary, mac dinh Primary sẽ tự động giảm tốc độ ghi nếu Secondary bị trễ dam bao dong bo va on dinh
+#db.adminCommand( { setParameter: 1, enableFlowControl: false } )
+# Tăng giới hạn bộ nhớ (RAM) được phép dùng cho các truy vấn có sort/blocking stage. Mặc định MongoDB giới hạn khoảng 100 MB, tang lenh 320 MB
+#db.adminCommand({setParameter: 1, internalQueryExecMaxBlockingSortBytes: 335544320})
+
+# neu muon them node config server moi
+# vao node moi khoi dong config server
+# vao node primary config server de ket noi node moi
+# rs.add("10.60.155.xxx:27019")
+# vao file config router khai bao node config server moi, khoi dong lai router de cap nhat danh sach
+# pkill mongos
+# pkill -f -9 '/u01/colombo/mongodb/bin/mongos -f /u01/colombo/etc/mongodb/wt-router.conf'
+# /u01/colombo/mongodb/bin/mongos -f /u01/colombo/etc/mongodb/wt-router.conf
+# kiem tra ket qua bang lenh db.adminCommand({ getShardMap: 1 })
+
+# cau hinh node shard
+# tao duong dan luu storage
+mkdir -p /u01/colombo/mongodb/shard-wt-1
+vi /u01/colombo/etc/mongodb/shard-wt-1.conf
+storage:
+        dbPath: "/u01/colombo/mongodb/shard-wt-1"
+        engine: wiredTiger
+        wiredTiger:
+            engineConfig:
+                cacheSizeGB: 3
+systemLog:
+        destination: file
+        path: "/u01/colombo/var/log/mongodb/shard-wt-1.log"
+        logAppend: true
+        logRotate: reopen
+net:
+        bindIp: 0.0.0.0
+        port: 27018
+        maxIncomingConnections: 2000000
+        #serviceExecutor: adaptive
+processManagement:
+        fork: true
+        pidFilePath: "/u01/colombo/var/run/mongodb/shard-wt-1.pid"
+replication:
+        replSetName: shard-wt-1
+        oplogSizeMB: 1024
+sharding:
+        clusterRole: shardsvr
+        #archiveMovedChunks: false
+#security:
+#        authorization: enabled
+#        keyFile: "/u01/colombo/mongodb/mongodb-keyfile"
+#        transitionToAuth: true
+setParameter:
+  internalQueryExecMaxBlockingSortBytes: 335544320
+
+#khoi dong shard 27018 tren cac node
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf
+# dung cong cu mongosh de cau hinh
+/u01/colombo/mongodb/bin/mongosh --port 27018
+rs.initiate({
+  _id: "shard-wt-1",
+  members: [
+    { _id: 0, host: "10.60.155.240:27018", priority: 10 },
+    { _id: 1, host: "10.60.155.188:27018", priority: 1 },
+  ]
+})
+rs.initiate({
+  _id: "shard-wt-2",
+  members: [
+    { _id: 0, host: "10.60.155.240:27028", priority: 10 },
+    { _id: 1, host: "10.60.155.188:27028", priority: 1 },
+  ]
+})
+
+# cau hinh node router
+vi /u01/colombo/etc/mongodb/wt-router.conf
+systemLog:
+        destination: file
+        path: "/u01/colombo/var/log/mongodb/wt-router.log"
+        logAppend: true
+        logRotate: reopen
+net:
+        bindIp: 0.0.0.0
+        port: 27017
+processManagement:
+        fork: true
+        pidFilePath: "/u01/colombo/var/run/mongodb/wt-router.pid"
+sharding:
+        configDB: wtconfig/10.60.155.240:27019,10.60.155.165:27019
+#security:
+        #authorization: enabled
+#        keyFile: "/u01/colombo/mongodb/mongodb-keyfile"
+        #transitionToAuth: true
+
+# khoi dong router tren cac node
+/u01/colombo/mongodb/bin/mongos -f /u01/colombo/etc/mongodb/wt-router.conf
+# Kết nối vào mongos và thêm shards
+# Kết nối vào 1 mongos:
+/u01/colombo/mongodb/bin/mongosh --port 27017
+# Thêm shards:
+sh.addShard("shard-wt-1/10.60.155.240:27018,10.60.155.188:27018")
+sh.addShard("shard-wt-2/10.60.155.240:27028,10.60.155.188:27028")
+# kiem tra ket qua bang lenh db.adminCommand({ getShardMap: 1 })
+# Bật sharding cho database và collection
+sh.enableSharding("mydb")
+sh.shardCollection("mydb.users", { _id: "hashed" })
+# Kiểm tra trạng thái
+sh.status()
+
+# them node arbiter chi de bau chon, Tránh mất majority, khong luu data
+# tao duong dan luu storage
+mkdir -p /u01/colombo/mongodb/arbiter-shard-wt-1
+mkdir -p /u01/colombo/mongodb/arbiter-shard-wt-2
+storage:
+        dbPath: "/u01/colombo/mongodb/arbiter-shard-wt-1"
+        engine: wiredTiger
+        wiredTiger:
+            engineConfig:
+                cacheSizeGB: 3
+systemLog:
+        destination: file
+        path: "/u01/colombo/var/log/mongodb/arbiter-shard-wt-1.log"
+        logAppend: true
+        logRotate: reopen
+net:
+        bindIp: 0.0.0.0
+        port: 27018
+        maxIncomingConnections: 2000000
+        #serviceExecutor: adaptive
+processManagement:
+        fork: true
+        pidFilePath: "/u01/colombo/var/run/mongodb/arbiter-shard-wt-1.pid"
+replication:
+        replSetName: shard-wt-1
+        oplogSizeMB: 1024
+
+# Kết nối vào mongos
+# Ví dụ bạn có router ở port 27017:
+/u01/colombo/mongodb/bin/mongosh --port 27017
+# Thiết lập default read/write concern
+# majority - cho cho da so thanh vien xac nhan, du lieu dc replicate
+db.adminCommand({
+  setDefaultRWConcern: 1,
+  defaultWriteConcern: { w: "majority" }, 
+  defaultReadConcern: { level: "majority" } 
+})
+#khoi dong cac node arbiter voi cac shard
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/arbiter-shard-wt-1.conf
+#vao node primary cua shard, ket noi node arbiter
+/u01/colombo/mongodb/bin/mongosh --port 27018
+rs.addArb("10.60.155.xxx:27018")
+
+# lenh stop mongod neu can 
+# /u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf --shutdown
+# pkill -f -9 '/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf'
+# /u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf --shutdown
+# pkill -f -9 '/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf'
+
+# cau hinh cum inMemory 
+mkdir -p /u01/colombo/var/log/mongodb1
+mkdir -p /u01/colombo/var/run/mongodb1
+mkdir -p /u01/colombo/etc/mongodb1
+mkdir -p /u01/colombo/mongodb1/core-config
+vi /u01/colombo/etc/mongodb1/core-config.conf
+storage:
+        dbPath: "/u01/colombo/mongodb1/core-config"
+        engine: wiredTiger
+        wiredTiger:
+            engineConfig:
+                cacheSizeGB: 1
+systemLog:
+        destination: file
+        path: "/u01/colombo/var/log/mongodb1/core-config.log"
+        logAppend: true
+        logRotate: reopen
+net:
+        bindIp: 0.0.0.0
+        port: 27119
+processManagement:
+        fork: true
+        pidFilePath: "/u01/colombo/var/run/mongodb1/core-config.pid"
+replication:
+        replSetName: core-config
+        oplogSizeMB: 256
+sharding:
+        clusterRole: configsvr
+        #archiveMovedChunks: false
+security:
+        authorization: enabled
+        keyFile: "/u01/colombo/mongodb1/mongodb-keyfile"
+        transitionToAuth: true
+
+/u01/colombo/mongodb1/bin/mongosh --port 27119
+rs.initiate({
+  _id: "core-config",
+  configsvr: true,
+  members: [
+    { _id: 0, host: "10.60.155.240:27119", priority: 10 },
+    { _id: 1, host: "10.60.155.188:27119", priority: 2 },
+    { _id: 2, host: "10.60.155.165:27119", priority: 1 }
+  ]
+})
+
+# cau hinh node shard
+mkdir -p /u01/colombo/mongodb1/core-shard-1
+vi /u01/colombo/etc/mongodb1/core-shard-1.conf
+storage:
+        dbPath: "/u01/colombo/mongodb1/core-shard-1"
+        #engine: wiredTiger
+        #wiredTiger:
+        #    engineConfig:
+        #        cacheSizeGB: 3
+        engine: inMemory
+        inMemory:
+            engineConfig:
+                inMemorySizeGB: 4
+systemLog:
+        destination: file
+        path: "/u01/colombo/var/log/mongodb1/core-shard-1.log"
+        logAppend: true
+        logRotate: reopen
+net:
+        bindIp: 0.0.0.0
+        port: 27118
+        maxIncomingConnections: 2000000
+        #serviceExecutor: adaptive
+processManagement:
+        fork: true
+        pidFilePath: "/u01/colombo/var/run/mongodb1/core-shard-1.pid"
+replication:
+        replSetName: core-shard-1
+        oplogSizeMB: 1024
+sharding:
+        clusterRole: shardsvr
+        #archiveMovedChunks: false
+security:
+        authorization: enabled
+        keyFile: "/u01/colombo/mongodb1/mongodb-keyfile"
+        transitionToAuth: true
+#setParameter:
+#  internalQueryExecMaxBlockingSortBytes: 335544320
+
+#khoi dong shard 27118 tren cac node
+/u01/colombo/mongodb1/bin/mongod -f /u01/colombo/etc/mongodb1/core-shard-1.conf
+# dung cong cu mongosh de cau hinh
+/u01/colombo/mongodb1/bin/mongosh --port 27118
+rs.initiate({
+  _id: "core-shard-1",
+  writeConcernMajorityJournalDefault: false,
+  members: [
+    { _id: 0, host: "10.60.155.240:27118", priority: 10 },
+    { _id: 1, host: "10.60.155.188:27118", priority: 2 },
+    { _id: 2, host: "10.60.155.165:27118", priority: 0 },
+  ]
+})
+
+mkdir -p /u01/colombo/mongodb1/core-shard-2
+/u01/colombo/mongodb1/bin/mongod -f /u01/colombo/etc/mongodb1/core-shard-2.conf
+# dung cong cu mongosh de cau hinh
+/u01/colombo/mongodb1/bin/mongosh --port 27128
+rs.initiate({
+  _id: "core-shard-2",
+  writeConcernMajorityJournalDefault: false,
+  members: [
+    { _id: 0, host: "10.60.155.240:27128", priority: 10 },
+    { _id: 1, host: "10.60.155.188:27128", priority: 0 },
+    { _id: 2, host: "10.60.155.165:27128", priority: 2 },
+  ]
+})
+
+/u01/colombo/mongodb1/bin/mongorestore  --port 27117 --authenticationDatabase admin -u colombo -p P0rtalmongo#123DLVB --verbose --db colombo10263 /u01/colombo/backup/colombo10263 --gzip
+
+DBCore:
+mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27117,10.60.155.165:27117/colombo10263?authSource=admin&readPreference=secondaryPreferred&retryWrites=true
+
+DBWT:
+mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27017,10.60.155.165:27017/colombo10263?authSource=admin&readPreference=secondaryPreferred&retryWrites=true
+
