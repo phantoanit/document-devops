@@ -58,12 +58,24 @@ dpkg -i maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
 curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | sudo bash
 sudo apt install -y maxscale
 
+#cau hinh maxscale tren cac node
+sudo cp /etc/maxscale.cnf /etc/maxscale.cnf.org
+sudo vi /etc/maxscale.cnf
+#cau hinh du cac block server1, server2, ...
+#block monitor khai bao du server1, server2, .. cau hinh tai khoan va mat khau ket noi thoi mariadb - co the tao tai khoan sau roi moi start maxscale
+#block read only service: khai bao cac node cho phep read, thuong thi khai bao het dam bao HA, cau hinh dung user va pass
+#block read write service: khai bao cac node cho web write, thuong thi khai bao het dam bao HA, cau hinh dung user va pass
+
 #create user connect maxscale
 CREATE USER 'maxscale'@'%' IDENTIFIED BY 'password';
 GRANT REPLICATION CLIENT ON *.* TO 'maxscale'@'%';
 GRANT REPLICATION SLAVE ADMIN ON *.* TO 'maxscale'@'%';
 GRANT REPLICA MONITOR ON *.* TO 'maxscale'@'%';
 FLUSH PRIVILEGES;
+
+sudo systemctl start maxscale
+#kiem tra cum
+maxctl list server
 
 
 ############# docker compose ###############
