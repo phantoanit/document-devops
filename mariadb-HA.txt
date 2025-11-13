@@ -37,6 +37,20 @@ mysql -u root -e "SHOW STATUS LIKE 'wsrep_cluster_size'"
 #server-2,3
 systemctl restart mariadb
 
+#Kiểm tra tính đồng bộ dữ liệu Thực hiện trên server 1
+mysql
+MariaDB [(None)]> create database devopseduvndb;
+MariaDB [(None)]> use devopseduvndb;
+MariaDB [devopseduvndb]> create table series (Name VARCHAR(50) PRIMARY KEY, Lever VARCHAR(25), Release_date DATE);
+MariaDB [devopseduvndb]> insert into series (Name, Lever, Release_date) VALUES ('DevOps for Freshers', 'Basic/Freshers', '2024-01-15'), ('Xây dựng quy trình pipeline DevSecOps', 'Thực tế chuyên sâu', '2024-06-16'), ('HA tools', 'Advanced/Thực tế', '2024-08-18');
+
+#Kiểm tra tính đồng bộ dữ liệu Thực hiện trên server 2 hoặc server 3
+mysql
+MariaDB [(None)]> use devopseduvndb;
+MariaDB [devopseduvndb]> show databases;
+MariaDB [devopseduvndb]> show tables;
+MariaDB [devopseduvndb]> select * from series;
+
 #install maxscale
 wget https://dlm.mariadb.com/2344079/MaxScale/6.4.1/packages/ubuntu/jammy/x86_64/maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
 dpkg -i maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
