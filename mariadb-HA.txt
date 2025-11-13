@@ -75,7 +75,7 @@ FLUSH PRIVILEGES;
 
 sudo systemctl start maxscale
 #kiem tra cum
-maxctl list server
+maxctrl list servers
 
 
 ############# docker compose ###############
