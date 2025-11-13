@@ -26,6 +26,12 @@ wsrep_node_address="192.168.213.11"
 wsrep_node_name="server-1"
 
 #server-2 va 3 tuong tu thay doi wsrep_node_address & wsrep_node_name
+#cau hinh bind mysql va duong dan luu data neu muon
+sudo mkdir -p /u01/colombo/var/lib/mysql
+sudo vi /etc/mysql/mariadb.conf.d/50-server.cnf
+datadir = 
+bind-address = 0.0.0.0
+
 #start cluster
 #server-1
 systemctl stop mariadb
