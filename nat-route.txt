@@ -1,0 +1,80 @@
+#Kiểm tra 2 NIC trên Ubuntu Router
+#Chạy trên Ubuntu router:
+ip a
+ens33 → Bridged (có IPv4 từ router thật, ví dụ 192.168.1.x)
+ens34 → Host-only / VMnet10 (có thể chưa có IP)
+
+#Nếu ens34 chưa có IP → đặt IP tĩnh cho nó.
+sudo vi /etc/netplan/01-netcfg.yaml
+network:
+  version: 2
+  ethernets:
+    ens34:
+          addresses:
+            - 10.10.0.1/24 
+
+sudo netplan apply
+
+#Bật IP Forwarding (cho phép kernel làm router)
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-sysctl.conf
+sudo sysctl -p /etc/sysctl.d/99-sysctl.conf
+
+# 2 cach cau hinh NAT
+
+##Cấu hình NAT bằng nftables
+#mac dinh ubuntu 24 co san, hoac kiem tra chua co thi cai
+sudo apt install nftables
+sudo systemctl enable --now nftables
+
+sudo vi /etc/nftables.conf
+#!/usr/sbin/nft -f
+
+flush ruleset
+table ip nat {
+    chain prerouting {
+        type nat hook prerouting priority -100; # so am 100 uu tien nat xu ly som truoc khi filter
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority 100; #so duong 100 xu ly muon truoc khi goi tin roi di duoc gan ip mang bridged
+        oif "ens33" masquerade     # NAT ra interface bridged
+    }
+}
+table ip filter {
+    chain input {
+        type filter hook input priority 0; #0 muc uu tien chuan
+        accept
+    }
+    chain forward {
+        type filter hook forward priority 0; #0 muc uu tien chuan
+        iif "ens34" oif "ens33" accept   # Cho phép private → internet
+        iif "ens33" oif "ens34" ct state related,established accept
+        drop
+    }
+    chain output {
+        type filter hook output priority 0; #0 muc uu tien chuan
+        accept
+    }
+}
+
+sudo systemctl restart nftables
+
+
+##Cấu hình NAT bằng iptables
+#Bạn muốn NAT từ private (ens34) → ra Bridged (ens33):
+sudo iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
+sudo iptables -A FORWARD -i ens34 -o ens33 -j ACCEPT
+sudo iptables -A FORWARD -i ens33 -o ens34 -m state --state RELATED,ESTABLISHED -j ACCEPT
+#Lưu iptables để khởi động lại không mất:
+sudo apt install iptables-persistent -y
+sudo netfilter-persistent save
+
+##Cấu hình netplan các VM trong cụm (client VM)
+addresses: [10.10.0.10/24]
+gateway4: 10.10.0.1 
+#hoac 
+routes: 
+  - to: 0.0.0.0/0
+    via: 10.10.0.1
+
+sudo netplan apply
