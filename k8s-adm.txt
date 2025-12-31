@@ -76,6 +76,7 @@ sudo rm -rf /etc/kubernetes/manifests/*
 
 # case 1 neu khoi tao cum 1 master va nhieu worker, tren node master:
  sudo kubeadm init
+ #tiep tuc cac buoc theo huong dan tren man hinh, se nhu sau:
  mkdir -p $HOME/.kube
  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
  sudo chown $(id -u):$(id -g) $HOME/.kube/config
@@ -83,6 +84,7 @@ sudo rm -rf /etc/kubernetes/manifests/*
 
 # case 2 neu khoi tao cum 3 master, tren node master endppoint:
 sudo kubeadm init --control-plane-endpoint "192.168.100.105:6443" --upload-certs
+#tiep tuc cac buoc theo huong dan tren man hinh, se nhu sau:
 mkdir -p $HOME/.kube 
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config 
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
@@ -91,6 +93,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 #Thực hiện trên server k8s-master-2 và k8s-master-3
 #copy lenh join hien thi kem token, se giong nhu sau
 sudo kubeadm join 192.168.100.105:6443 --token your_token --discovery-token-ca-cert-hash your_sha --control-plane --certificate-key your_cert
+#tiep tuc cac buoc theo huong dan tren man hinh, se nhu sau:
 mkdir -p $HOME/.kube 
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config 
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
