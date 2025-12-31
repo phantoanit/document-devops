@@ -74,30 +74,34 @@ sudo kubeadm reset -f
 sudo rm -rf /var/lib/etcd
 sudo rm -rf /etc/kubernetes/manifests/*
 
-# khoi tao cum 1 master va nhieu worker
+# case 1 neu khoi tao cum 1 master va nhieu worker, tren node master:
  sudo kubeadm init
  mkdir -p $HOME/.kube
  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
  sudo chown $(id -u):$(id -g) $HOME/.kube/config
- kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml
+ #lenh join hien thi kem token se chay sau tren cac node
 
-# khoi tao cum 3 master (worker)
+# case 2 neu khoi tao cum 3 master, tren node master endppoint:
 sudo kubeadm init --control-plane-endpoint "192.168.100.105:6443" --upload-certs
 mkdir -p $HOME/.kube 
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config 
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml
+#lenh join hien thi kem token se chay sau tren cac node
 
 #Thực hiện trên server k8s-master-2 và k8s-master-3
+#copy lenh join hien thi kem token, se giong nhu sau
 sudo kubeadm join 192.168.100.105:6443 --token your_token --discovery-token-ca-cert-hash your_sha --control-plane --certificate-key your_cert
 mkdir -p $HOME/.kube 
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config 
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-#neu cac node la master cho phep pod hoat dong tren node la control-plan, thuc hien tren tat cac node
+#cai calico giai phap mang
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml
+
+#neu cac node la master cho phep pod hoat dong tren node la control-plan, node vua la master vua la worker, thuc hien tren tat cac node
 kubectl taint nodes k8s-master-1 node-role.kubernetes.io/control-plane:NoSchedule-
 
-#Thực hiện trên server k8s-master-1
+#Thực hiện trên server k8s-master-1, cac node khac tu dong bo
 # Cài đặt Helm, Cài ingress nginx
 #wget https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz
 wget https://get.helm.sh/helm-v3.16.2-linux-arm64.tar.gz
