@@ -12,6 +12,7 @@ network:
     ens34:
           addresses:
             - 10.10.0.1/24 
+          gateway4: 10.10.0.1 
 
 sudo netplan apply
 
