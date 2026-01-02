@@ -13,6 +13,10 @@ network:
           addresses:
             - 10.10.0.1/24 
           gateway4: 10.10.0.1 
+          #hoac ubuntu 24
+          routes: 
+            - to: 0.0.0.0/0
+              via: 10.10.0.1
 
 sudo netplan apply
 
