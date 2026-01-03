@@ -61,7 +61,7 @@ table ip filter {
 sudo systemctl restart nftables
 
 
-##Cấu hình NAT bằng iptables
+##Cấu hình NAT bằng iptables, chu y kiem tra da duoc Bật IP Forwarding tren may nat
 #neu muon xoa cau hinh cu
 #sudo iptables -F
 #sudo iptables -t nat -F
