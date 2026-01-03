@@ -78,6 +78,7 @@ sudo iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
 sudo iptables -A FORWARD -i ens34 -o ens33 -j ACCEPT
 
 #chuyen tiep goi tin qua router, incoming interface di vao tu ens33, outgoing interface di ra qua ens34, -m state load module state theo doi trang thai ket noi co the voi module moi la -m conntract --ctstate, ESTABLISHED goi tin thuoc mot ket noi da duoc thiet lap tu truoc luc nay dang quay ve, RELATED co lien quan den ket noi da co, khong match ket noi moi hoac goi loi, -j accept cho phep qua
+#cho phep goi tin phan hoi cua snat/masquerate quay ve, khong phai la goi tin DNAT ma la goi tin phan hoi
 sudo iptables -A FORWARD -i ens33 -o ens34 -m state --state RELATED,ESTABLISHED -j ACCEPT
 
 #neu muon chan toan bo cac forward khac
