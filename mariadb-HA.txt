@@ -57,6 +57,7 @@ MariaDB [devopseduvndb]> show databases;
 MariaDB [devopseduvndb]> show tables;
 MariaDB [devopseduvndb]> select * from series;
 
+#ket hop voi maxscale, Tránh xung đột ghi neu nhieu client cung khi tren mot dong du lieu o nhieu node khac nhau, maxscale se tu bau chon 1 master lam node write con lai la slave - read only, khi master co su co maxscale se tu xu ly bau chon lai nhanh chong
 #install maxscale, neu cai tren ubuntu24.04 thi chuyen cach khac
 wget https://dlm.mariadb.com/2344079/MaxScale/6.4.1/packages/ubuntu/jammy/x86_64/maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
 dpkg -i maxscale-6.4.1-1.ubuntu.jammy.x86_64.deb
