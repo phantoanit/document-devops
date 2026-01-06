@@ -78,6 +78,7 @@ CREATE USER 'maxscale'@'%' IDENTIFIED BY 'password';
 GRANT REPLICATION CLIENT ON *.* TO 'maxscale'@'%';
 GRANT REPLICATION SLAVE ADMIN ON *.* TO 'maxscale'@'%';
 GRANT REPLICA MONITOR ON *.* TO 'maxscale'@'%';
+GRANT SELECT ON mysql.* TO 'maxscale'@'%';
 FLUSH PRIVILEGES;
 
 sudo systemctl start maxscale
