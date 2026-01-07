@@ -31,6 +31,7 @@ sudo mkdir -p /u01/colombo/var/lib/mysql
 sudo vi /etc/mysql/mariadb.conf.d/50-server.cnf
 datadir = 
 bind-address = 0.0.0.0
+skip-name-resolve // block [mysqld] bo qua phan giai dns
 
 #start cluster
 #server-1
@@ -72,6 +73,8 @@ sudo vi /etc/maxscale.cnf
 #block monitor khai bao du server1, server2, .. cau hinh tai khoan va mat khau ket noi thoi mariadb - co the tao tai khoan sau roi moi start maxscale
 #block read only service: khai bao cac node cho phep read, thuong thi khai bao het dam bao HA, cau hinh dung user va pass
 #block read write service: khai bao cac node cho web write, thuong thi khai bao het dam bao HA, cau hinh dung user va pass
+#[MaxScale]
+#dns_strategy=none // bo qua phan giai dns
 
 #create user connect maxscale
 CREATE USER 'maxscale'@'%' IDENTIFIED BY 'password';
