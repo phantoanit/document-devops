@@ -79,6 +79,8 @@ GRANT REPLICATION CLIENT ON *.* TO 'maxscale'@'%';
 GRANT REPLICATION SLAVE ADMIN ON *.* TO 'maxscale'@'%';
 GRANT REPLICA MONITOR ON *.* TO 'maxscale'@'%';
 GRANT SELECT ON mysql.* TO 'maxscale'@'%';
+GRANT SHOW DATABASES, SELECT, PROCESS ON *.* TO 'maxscale'@'%';
+GRANT SUPER ON *.* TO 'maxscale'@'10.60.%';
 FLUSH PRIVILEGES;
 
 sudo systemctl start maxscale
