@@ -160,6 +160,16 @@ rs.initiate({
   ]
 })
 
+# cau hinh tren cac shard
+# Primary ghi full tốc độ, không quan tâm Secondary, mac dinh Primary sẽ tự động giảm tốc độ ghi nếu Secondary bị trễ dam bao dong bo va on dinh
+#db.adminCommand( { setParameter: 1, enableFlowControl: false } )
+# Tăng giới hạn bộ nhớ (RAM) được phép dùng cho các truy vấn có sort/blocking stage. Mặc định MongoDB giới hạn khoảng 100 MB, tang lenh 320 MB
+#db.adminCommand({setParameter: 1, internalQueryExecMaxBlockingSortBytes: 335544320})
+# tao role moi co toan quyen
+db.createRole( { role: "executeFunctions", privileges: [ { resource: { anyResource: true }, actions: [ "anyAction" ] } ], roles: [] } )
+# Cấp quyền role vừa tạo cho user colombo
+db.grantRolesToUser("colombo",["executeFunctions"])
+
 # cau hinh node router
 vi /u01/colombo/etc/mongodb/wt-router.conf
 systemLog:
