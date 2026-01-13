@@ -53,6 +53,33 @@ appendonly yes
 /u01/colombo/redis/bin/redis-cli -p 7000
 127.0.0.1:7000> cluster info
 127.0.0.1:7000> cluster nodes
+#stop node
+/u01/colombo/redis/bin/redis-cli -h ${IPADDRESS} -p $PORT -a Redis2025 --no-auth-warning  shutdown nosave
+#watch
+date
+redis-cli -h ${IPADDRESS} -p $PORT -a Redis2022 --no-auth-warning cluster nodes | head -30
+sleep 1
+#call with option
+echo "Usage: $0 [start|create|stop|watch|tail|clean]"
+echo "start       -- Launch Redis Cluster instances."
+echo "create      -- Create a cluster using redis-cli --cluster create."
+echo "stop        -- Stop Redis Cluster instances."
+echo "watch       -- Show CLUSTER NODES output (first 30 lines) of first node."
+echo "tail <id>   -- Run tail -f of instance at base port + ID."
+echo "clean       -- Remove all instances data, logs, configs."
+echo "clean-logs  -- Remove just instances logs."
+/u01/colombo/redis/bin/redis-cli -h ${IPADDRESS} -p $PORT -a Redis2022 --no-auth-warning  $2 $3 $4 $5 $6 $7 $8 $9
+#clean all
+cd ${DIR}/logs
+rm -rf *.log
+cd ${DIR}/data
+rm -rf appendonly*.aof
+rm -rf dump*.rdb
+cd ${DIR}/conf
+rm -rf nodes*.conf
+#clean log
+cd ${DIR}/logs
+rm -rf *.log
 
 ## Cài đặt redis và redis-sentinel voi 3 node
 sudo apt install -y lsb-release curl gpg
