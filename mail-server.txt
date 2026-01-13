@@ -1,0 +1,677 @@
+PORT LB
+25, 587, 465, 993, 995, 80, 443
+Chỉ cần mở public các port:
+25 (SMTP nhận mail)
+465 (SMTPS) # thuong su dung thay the cho port 25
+587 (SMTP Submission TLS) #khuyen nghi su dung
+143 (IMAP)
+993 (IMAPS)
+995 (POP3S – nếu dùng) # pop3 110
+80/443 (nếu có webmail)
+
+#khoi tao cum storage shared lan dau
+sudo mkdir -p /u01/colombo/gluster/maildata
+sudo gluster volume create vol_mail_storage replica 3 transport tcp storage-master-1:/u01/colombo/gluster/maildata storage-master-2:/u01/colombo/gluster/maildata storage-master-3:/u01/colombo/gluster/maildata
+
+sudo mkdir -p /u01/colombo/maildata
+sudo chown -R vmail:vmail /u01/colombo/maildata
+#cach mount truc tiep
+#sudo mount -t glusterfs localhost:/vol_mail_storage /u01/colombo/maildata -o backupvolfile-servers=mail2,_netdev
+#cach mount thêm vào /etc/fstab
+sudo echo "localhost:/vol_mail_storage /u01/colombo/maildata glusterfs _netdev,nofail,x-systemd.automount,backupvolfile-server=storage-master-1:storage-master-2:storage-master-3 0 0" | sudo tee -a /etc/fstab
+sudo mount -a
+sudo systemctl daemon-reload
+#kiem tra
+df -h | grep maildata
+
+sudo apt install -y postfix mailutils postfix-mysql
+#test guil mail
+#/usr/sbin/sendmail phantoan.it@gmail.com
+
+sudo vi /etc/postfix/main.cf
+#Cấu hình hostname & domain
+myhostname = mail1.yourdomain.com
+#mydomain = yourdomain.com
+myorigin = $mydomain
+
+
+# neu su dung dovecot lmtp voi cau hinh virtual_transport thi postfix khong quyet dinh va khong can cau hinh dir mailbox, chi can cau hinh o dovecot
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+virtual_mailbox_base = /u01/colombo/maildata
+virtual_minimum_uid = 5000
+virtual_uid_maps = static:5000
+virtual_gid_maps = static:5000
+#can cai dat cau hinh sql truoc de su dung virtual user, su dung PostfixAdmin thong dung
+virtual_mailbox_domains = mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
+virtual_mailbox_maps = mysql:/etc/postfix/mysql-virtual-mailbox-maps.cf
+virtual_alias_maps = mysql:/etc/postfix/mysql-virtual-alias-maps.cf
+
+virtual_mailbox_domains = mysql:/etc/postfix/mysql-virtual-mailbox-domains.cf
+virtual_mailbox_maps = mysql:/etc/postfix/mysql-virtual-mailbox-maps.cf,
+   mysql:/etc/postfix/mysql-virtual-alias-domain-mailbox-maps.cf 
+virtual_alias_maps = mysql:/etc/postfix/mysql-virtual-alias-maps.cf,
+   mysql:/etc/postfix/mysql-virtual-alias-domain-maps.cf,
+   mysql:/etc/postfix/mysql-virtual-alias-domain-catchall-maps.cf
+
+#Tích hợp Postfix với Dovecot (SASL Auth)
+#Bật TLS/SSL cho Postfix
+#smtpd_tls_cert_file=/etc/letsencrypt/live/mail.example.com/fullchain.pem
+#smtpd_tls_key_file=/etc/letsencrypt/live/mail.example.com/privkey.pem
+smtpd_use_tls=yes
+smtp_tls_security_level=may
+smtpd_tls_security_level=may
+smtpd_tls_auth_only = yes
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_local_domain = $myhostname
+# giảm spam log, Bắt buộc TLS trước AUTH, AUTH chỉ cho phép sau TLS
+smtpd_sasl_auth_enable = yes
+broken_sasl_auth_clients = yes
+#Chống spam cơ bản
+smtpd_helo_required = yes
+
+smtpd_recipient_restrictions = permit_sasl_authenticated, permit_mynetworks, reject_unauth_destination
+
+#Cấu hình mạng Postfix
+inet_interfaces = all
+inet_protocols = ipv4
+mydestination = $myhostname, localhost.$mydomain,
+#neu la virtual domain:
+mydestination = localhost, localhost.localdomain
+#Cho phép mạng nội bộ (mynetworks)
+mynetworks = 127.0.0.0/8, 10.60.0.0/16
+
+home_mailbox = Maildir/ #loại mailbox: Maildir, neu dung custom maildir thi bat buoc de trong hoac comment lai
+#mailbox_command =
+
+#lien ket opendkim voi postfix
+milter_default_action = accept
+milter_protocol = 2
+# Định nghĩa bộ lọc (Milter)
+smtpd_milters = inet:127.0.0.1:8891
+# Kích hoạt bộ lọc cho các email gửi nội bộ từ dòng lệnh
+non_smtpd_milters = $smtpd_milters
+# tự động bổ sung các header còn thiếu
+always_add_missing_headers  = yes
+
+#neu cau hinh lai home_mailbox
+sudo postconf -e 'home_mailbox = Maildir\'
+
+#cho phép user dùng SMTP AUTH - SMTP submission (587) (Outlook, Thunderbird…) bat buoc bat neu dung webmail client
+sudo vi /etc/postfix/master.cf
+submission inet n - y - - smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_sasl_type=dovecot
+  -o smtpd_sasl_path=private/auth
+  -o smtpd_reject_unlisted_recipient=no
+  -o smtpd_client_restrictions=permit_sasl_authenticated,reject
+  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
+
+#Cấu hình kết nối MySQL/Galera Cluster
+#Tạo file:
+/etc/postfix/mysql-virtual-mailbox-domains.cf
+/etc/postfix//mysql-virtual-mailbox-maps.cf
+/etc/postfix/mysql-virtual-alias-maps.cf
+/etc/postfix/mysql-virtual-alias-domain-catchall-maps.cf
+/etc/postfix/mysql-virtual-alias-domain-maps.cf
+/etc/postfix/mysql-virtual-alias-domain-mailbox-maps.cf
+
+sudo vi /etc/postfix/mysql-virtual-mailbox-domains.cf
+user = postfixadmin
+password = colomboxxx112233
+#lu y doi sang ip maxscale cum galera neu su dung
+hosts = 127.0.0.1:3306
+dbname = postfixadmin
+query = SELECT domain FROM domain WHERE domain='%s' AND active = '1'
+#query = SELECT domain FROM domain WHERE domain='%s'
+#optional query to use when relaying for backup MX
+#query = SELECT domain FROM domain WHERE domain='%s' AND backupmx = '0' AND active = '1'
+#expansion_limit = 100
+
+sudo vi /etc/postfix/mysql-virtual-mailbox-maps.cf
+user = postfixadmin
+password = colomboxxx112233
+#lu y doi sang ip maxscale cum galera neu su dung
+hosts = 127.0.0.1:3306
+dbname = postfixadmin
+query = SELECT maildir FROM mailbox WHERE username='%s' AND active = '1'
+#expansion_limit = 100
+
+sudo vi /etc/postfix/mysql-virtual-alias-maps.cf
+user = postfixadmin
+password = colomboxxx112233
+#lu y doi sang ip maxscale cum galera neu su dung
+hosts = 127.0.0.1:3306
+dbname = postfixadmin
+query = SELECT goto FROM alias WHERE address='%s' AND active = '1'
+#expansion_limit = 100
+
+sudo vi /etc/postfix/mysql-virtual-alias-domain-mailbox-maps.cf
+user = postfixadmin
+password = colomboxxx112233
+#lu y doi sang ip maxscale cum galera neu su dung
+hosts = 127.0.0.1:3306
+dbname = postfixadmin
+query = SELECT maildir FROM mailbox,alias_domain WHERE alias_domain.alias_domain = '%d' and mailbox.username = CONCAT('%u', '@', alias_domain.target_domain) AND mailbox.active = 1 AND alias_domain.active='1'
+
+sudo vi /etc/postfix/mysql-virtual-alias-domain-maps.cf
+user = postfixadmin
+password = colomboxxx112233
+#lu y doi sang ip maxscale cum galera neu su dung
+hosts = 127.0.0.1:3306
+dbname = postfixadmin
+query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('%u', '@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
+
+sudo vi /etc/postfix/mysql-virtual-alias-domain-catchall-maps.cf
+# handles catch-all settings of target-domain
+user = postfixadmin
+password = colomboxxx112233
+#lu y doi sang ip maxscale cum galera neu su dung
+hosts = 127.0.0.1:3306
+dbname = postfixadmin
+query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
+
+#Phân quyền:
+sudo chmod 640 /etc/postfix/mysql-*.cf
+sudo chgrp postfix /etc/postfix/mysql-*.cf
+
+sudo systemctl restart postfix
+sudo systemctl enable postfix
+
+# neu can cau hinh lai tu dau
+#sudo dpkg-reconfigure postfix
+
+#test send mail, insert: From:, To:, Subject:
+/usr/sbin/sendmail phantoan.it@gmail.com
+
+#### dovecot
+sudo apt install -y dovecot-core dovecot-imapd dovecot-lmtpd dovecot-mysql dovecot-pop3d dovecot-sieve dovecot-managesieved dovecot-antispam
+sudo systemctl start dovecot
+sudo systemctl enable dovecot
+dovecot --version
+
+sudo vi /etc/dovecot/dovecot.conf
+protocols = pop3 pop3s imap imaps lmtp sieve
+# neu dung local user
+mail_location = maildir:~/Maildir
+# neu virtual user
+mail_location = maildir:/u01/colombo/maildata/%d/%n/Maildir
+#mail_location = maildir:/var/vmail/%d/%n
+# neu Maildir nằm ngoài $HOME user phai chi dinh user mail dùng chung
+mail_uid = 5000
+mail_gid = 5000
+#login is for outlook express smtpd auth
+auth_mechanisms = plain login
+#disable_plaintext_auth = no
+#bat khi luu storage shard, Mail đang nằm trên filesystem không local disk, Dovecot:Disable một số tối ưu nguy hiểm, Dùng lock an toàn hơn Tránh stale cache
+#neu khong bat Rủi ro: Mail mất, Mail trùng, Index corrupt, Folder biến mất ngẫu nhiên, Những lỗi rất khó debug
+#neu khong phai la LB dovecot backend thi co the giu mac dinh cho 3 option duoi day de tang toc do su dung, comment lai
+mail_nfs_storage = yes
+mail_nfs_index = yes
+mmap_disable = yes
+mail_fsync = always
+
+#Cấu hình MySQL auth (virtual users)
+
+sudo vi /etc/dovecot/conf.d/10-auth.conf
+!include auth-sql.conf.ext
+disable_plaintext_auth = yes
+auth_mechanisms = plain login
+
+#neu can ghi log go roi dang
+#auth_debug = yes
+#auth_debug_passwords = yes nhap 
+
+sudo vi /etc/dovecot/conf.d/auth-sql.conf.ext
+passdb {
+    driver = sql
+    args = /etc/dovecot/dovecot-sql.conf.ext
+}
+#su dung quet thong tin duoi local, giam truy van sql
+userdb {
+    driver = static
+    #args = uid=2000 gid=2000 home=/maildata/%d/%n
+    args = uid=5000 gid=5000 home=/u01/colombo/maildata/%d/%n
+}
+
+sudo vi /etc/dovecot/dovecot-sql.conf.ext
+driver = mysql
+#lu y doi sang ip maxscale cum galera neu su dung
+connect = host=127.0.0.1 port=4006 dbname=postfixadmin user=postfixadmin password=colomboxxx112233
+
+default_pass_scheme = SHA512-CRYPT
+
+password_query = SELECT username AS user,password FROM mailbox WHERE username = '%u' AND active='1'
+#neu dung userdb query, con dung userdb static theo mail dir thi khong can
+#user_query = SELECT maildir, 5000 AS uid, 5000 AS gid FROM mailbox WHERE username = '%u' AND active='1'
+
+iterate_query = SELECT username AS user FROM mailbox
+
+
+#Phân quyền file chứa mật khẩu:
+#sudo chmod 640 /etc/dovecot/dovecot-sql.conf.ext
+#sudo chown root:dovecot /etc/dovecot/dovecot-sql.conf.ext
+
+#Kết nối LMTP giữa Postfix → Dovecot
+sudo vi /etc/dovecot/conf.d/10-master.conf
+#Tìm block lmtp:
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+  inet_listener lmtp {
+    #address = 10.60.1.30
+    port = 24
+  }
+}
+#Cho phép auth qua socket:
+#User phải đăng nhập biết ai được gửi mail ra ngoài, neu mo open relay server bị spam blacklist
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+}
+
+#Bật Sieve (lọc mail tự động)
+sudo vi /etc/dovecot/conf.d/20-lmtp.conf
+protocol lmtp {
+  mail_plugins = $mail_plugins sieve
+}
+
+sudo vi /etc/dovecot/conf.d/90-sieve.conf
+plugin {
+    sieve = /u01/colombo/maildata/%d/%n/sieve/.dovecot.sieve
+    sieve_dir = /u01/colombo/maildata/%d/%n/sieve
+}
+
+#Kiểm tra config
+sudo dovecot -n
+sudo systemctl restart dovecot
+sudo systemctl enable dovecot
+doveadm log errors
+postfix check
+journalctl -u dovecot -f
+
+#add vao group dovecot neu lien quan den permissions
+sudo usermod -aG dovecot colombo
+
+#Kiểm tra IMAP:
+telnet localhost 143
+#Kiểm tra LMTP:
+telnet localhost 24
+
+# cau hinh dns 
+type A: mail.vsystem.vn 10.60.1.30
+type MX: mail.vsystem.vn
+type txt: v=spf1 ip4:183.81.35.99 a mx ~all #cho phép IP mailserver gửi mail, cho phép IP của record MX gửi
+type txt: _dmarc -> v=DMARC1; p=quarantine; aspf=r; sp=none
+type txt: _dmarc.mailvhv.coquan.net  ->  v=DMARC1; p=quarantine; rua=mailto:dmarc@mailvhv.coquan.net
+#v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com; pct=100; adkim=s; aspf=s;
+#v=DMARC1; p=reject; rua=mailto:mailauth-reports@coquan.net
+
+type txt: mail._domainkey -> "v=DKIM1; h=sha256; k=rsa; 
+          p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjUEJ2RsCAVe36FBTT5ZVW7crcJhgnXQuvq0qV+eDdvfowJEyAPx5DVeBkswD4A+PQUdTRuvg0P12tKiP4ItTrChjYhIN/IXJ2JsM9rD0ml8aWbROJ8FxSeJmoAxpgt7qbmRAu172vT34qG8izyV9ZluC3hdnyRacJGxoPVWs7olefGI/Vckc4oUlrbM9OGFAIu7ya+5cdJmzX0+6hfDyaDGUgBBPoKWHF8jHJkJNQVZ1bX/HVfpKaX7uI5aZ8KFetvQ/xQmUTeFrNzT59YEsns4WP33/qWOiMS99uIceF74+O0FgZmZNkoELZJFb/4AGQ7ePN62KZRagoJaaSaoQjQIDAQAB" 
+
+"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxVSwD9T4ses5STGhNpgqM6brAhJz7BuZFhmXtaV9F/RrHsw6DKbxGf5AGWNpbQ+EsV5hHnvnEq1vF4kGs9PhSZgS+8ztcjrizyYe8HIiNOrqqRWZJyVnXvTpIej/4YCdzrJKkBgOVY6yBw7Kzd9UljaBLROBeKz7O5Ibd3PSDbJtNdN1SLk3UwAbCHyjz3OCbg/8KDzcj27zVHRtfmekOoEY1vuenRzwdvDTeFmaj0Gb3S/6DxEXdUrQvzg2uwmvEiZis9Ob3OOfogspmc1IyNCJFI+5YmOoiiFqJr6/eojeAoJ4AAvpUNi3EbGWGj6dPfKF9l7LwEJDguO2/V0G7QIDAQAB"
+
+# cau hinh dkim
+sudo apt install -y opendkim opendkim-tools
+sudo systemctl start opendkim
+sudo systemctl enable opendkim
+
+sudo mkdir /etc/opendkim 
+sudo chown -R opendkim:opendkim /etc/opendkim
+sudo mkdir -p /etc/opendkim/keys
+sudo chmod go-rwx /etc/opendkim/keys
+sudo mkdir -p /etc/opendkim/keys/mail.vsystem.vn
+
+sudo opendkim-genkey -s mail -d mailvhv.coquan.net -D /etc/opendkim/
+sudo opendkim-genkey -b 2048 -d mail.vsystem.vn -s mail -D /etc/opendkim/keys/mail.vsystem.vn
+sudo chown opendkim:opendkim /etc/opendkim/keys/mail.vsystem.vn/mail.private
+sudo chmod 600 /etc/opendkim/keys/mail.vsystem.vn/mail.private
+sudo cat /etc/opendkim/keys/mail.vsystem.vn/mail.txt
+
+sudo vi /etc/opendkim.conf
+Domain                  *
+AutoRestart             Yes
+SubDomains              yes
+Canonicalization        relaxed/simple
+#KeyFile                 /etc/opendkim/keys/default.private
+#Selector                default # bản ghi DKIM trong DNS sẽ dùng default._domainkey.yourdomain.com.
+AutoRestartRate         10/1h
+Syslog                  yes
+SyslogSuccess           yes
+LogWhy                  yes
+
+Mode                    sv
+
+UMask                  002
+
+#Soket                  local:/var/spool/postfix/opendkim/opendkim.sock
+#Socket                  inet:12301@localhost #Postfix sẽ gửi mail sang đây để DKIM ký.
+Socket inet:8891@localhost
+
+
+#Nameservers 127.0.0.1
+
+ExternalIgnoreList      refile:/etc/opendkim/TrustedHosts
+InternalHosts            refile:/etc/opendkim/TrustedHosts
+KeyTable               refile:/etc/opendkim/KeyTable
+SigningTable           refile:/etc/opendkim/SigningTable
+SignatureAlgorithm     rsa-sha256
+
+sudo vi /etc/opendkim/TrustedHosts
+127.0.0.1
+localhost
+mail.vsystem.vn
+
+sudo vi /etc/opendkim/KeyTable
+mail._domainkey.mail.vsystem.vn mail.vsystem.vn:/etc/opendkim/keys/mail.vsystem.vn/mail.private
+mail._domainkey.vsystem.vn vsystem.vn:mail:/etc/opendkim/keys/vsystem.vn/mail.private
+
+sudo vi /etc/opendkim/SigningTable
+*@mail.vsystem.vn mail._domainkey.mail.vsystem.vn
+*@coquan.net mail._domainkey.coquan.net
+*@mail.coquan.net mail._domainkey.coquan.net
+*@vsystem.vn mail._domainkey.vsystem.vn
+
+#Liên kết OpenDKIM với Postfix - quan trọng, kiem tra cau hinh postfix neu chua co thi them
+sudo vi /etc/postfix/main.cf
+milter_default_action = accept
+milter_protocol = 2
+# tuy chinh port
+smtpd_milters = inet:localhost:12301
+non_smtpd_milters = inet:localhost:12301
+
+sudo systemctl restart postfix
+sudo systemctl restart opendkim
+#Kiểm tra DKIM hoạt động
+#Gửi mail
+
+#Tối thiểu cần 3 thứ để mail vào inbox:
+#✔ DKIM: xác thực chữ ký
+#✔ SPF: xác thực IP
+#✔ DMARC: xác thực domain alignment
+
+url web test dkim
+https://www.mail-tester.com/
+test gui mail xem co dkim hay chua, co mail o inbox chinh khong, xem "view original"
+Kiểm tra SPF/DMARC
+https://mxtoolbox.com/dmarc.aspx
+https://mxtoolbox.com/spf.aspx
+https://dmarcian.com/dmarc-inspector/
+https://dmarcian.com/dkim-inspector/
+
+
+##### Cài Roundcube
+# cau hinh database 
+CREATE DATABASE roundcube CHARACTER SET utf8mb4;
+CREATE USER 'roundcube'@'localhost' IDENTIFIED BY 'colomboxxx112233';
+GRANT ALL PRIVILEGES ON roundcube.* TO 'roundcube'@'localhost';
+FLUSH PRIVILEGES;
+# neu can thay doi quyen
+CREATE USER 'roundcube'@'10.60.%' IDENTIFIED BY 'colomboxxx112233';
+GRANT ALL PRIVILEGES ON roundcube.* TO 'roundcube'@'10.60.%';
+FLUSH PRIVILEGES;
+
+#Tải và giải nén
+cd /u01/colombo/www
+wget https://github.com/roundcube/roundcubemail/releases/download/1.6.12/roundcubemail-1.6.12-complete.tar.gz
+tar xzf roundcubemail-1.6.12-complete.tar.gz
+mv roundcubemail-1.6.12 roundcube
+chown -R colombo:colombo /u01/colombo/www/roundcube
+chmod -R 755 /u01/colombo/www/roundcube
+# thu muc co quyen ghi roundcube/logs roundcube/temp
+# cau hinh nginx tro vao thu muc roundcube root, khi cai dat xong chuyen sang thu muc public_html
+server {
+        server_name mail.example.vn;
+        listen 80;
+
+        access_log /u01/colombo/var/log/nginx/roundcube_access.log;
+        error_log /u01/colombo/var/log/nginx/roundcube_error.log;
+
+        root /u01/colombo/www/roundcube;
+
+        index index.php;
+
+        location / {
+                try_files $uri $uri/ /index.php;
+        }
+        location ~ \.php$ {
+                include fastcgi_params;
+                fastcgi_pass unix:/u01/colombo/var/run/php72-fpm.sock;
+                fastcgi_index index.php;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        }
+        location ~ /\. {
+           deny all;
+        }
+}
+# truy cap trinh duyet voi hostname/installer/ kiem tra cau hinh va lam theo cac buoc, co the cai them plugin
+# co the cai dat nhanh ma khong can qua trinh duyet
+cd /u01/colombo/www/roundcube
+cp config.inc.php.sample config/config.inc.php
+# cap nhat db the 2 cach
+bin/initdb.sh --dir=SQL
+# hoac
+mysql -u roundcube -p roundcube \
+  < /u01/colombo/www/roundcube/SQL/mysql.initial.sql
+# sua cau hinh db cho phu hop 
+#lu y doi sang ip maxscale cum glarea neu su dung
+$config['db_dsnw'] = 'mysql://roundcube:colomboxxx112233@127.0.0.1/roundcube';
+$config['imap_host'] = 'ssl://localhost:993';
+$config['imap_host'] = ['ssl://10.60.3.30:993', 'ssl://10.60.1.30:993', 'ssl://10.60.2.40:993'];
+#neu mang noi bo co the bo qua ssl 
+$config['imap_conn_options'] = [
+    'ssl' => [
+        'verify_peer'       => false,
+        'verify_peer_name'  => false, // Quan trọng nhất: bỏ qua kiểm tra khớp tên CN
+        'allow_self_signed' => true,
+    ],
+];
+#neu qua proxy upstrem nginx phai cau hinh Tránh lỗi: login loop CSRF token invalid redirect sai scheme
+#bo qua do khi bat test thay redirect
+#$config['force_https'] = true;
+#$config['trusted_hosts'] = ['mail.vsystem.vn'];
+
+$config['smtp_host'] = 'tls://localhost:587';
+$config['smtp_auth'] = true;
+
+$config['mail_domain'] = 'coquan.net';
+$config['dont_override'] = ['mail_domain'];
+$config['disabled_actions'] = ['about'];
+$config['product_name'] = ' Webmail'; //show text
+$config['mail_domain'] = 'vsystem.vn';
+$config['dont_override'] = ['mail_domain'];
+#Login chỉ cần user, không cần user@example.com
+#$config['username_domain'] = 'example.com';
+$config['enable_installer'] = true;
+
+$config['plugins'] = [
+    'archive',
+    'zipdownload',
+    'password',
+];
+//$config['disabled_actions'] = ['about']; //thong tin ma nguon mo
+
+#neu muon doi style css, can rebuild css
+#sudo npm install -g less less-plugin-clean-css
+#lessc --version
+#cd roundcube/public_html/skins/elastic
+#sua mau button trong styles/colors.less sau do build css
+#lessc --clean-css="--s1 --advanced" styles/styles.less styles/styles.min.css
+
+#bat plugin doi password 
+cd roundcube/plugins/password/
+cp config.inc.php.dist config.inc.php
+vi config.inc.php
+$config['password_driver'] = 'sql';
+$config['password_confirm_current'] = true;
+$config['password_algorithm'] = 'sha256-crypt';
+// luu y doi sang ip maxscale cum glarea neu su dung
+$config['password_db_dsn'] = 'mysql://postfixadmin:colomboxxx112233@127.0.0.1:3306/postfixadmin'; 
+$config['password_query'] = 'UPDATE mailbox SET password=%P, modified=NOW() WHERE username=%u LIMIT 1';
+# luu config va vao roudcube doi mat khau de kiem tra
+
+#kiem tra log
+tail -n 50 /u01/colombo/www/roundcube/logs/errors.log
+
+#cau hinh local user custom mail dir
+#groupadd vmail
+#useradd -g vmail -s /sbin/nologin vmail
+#mkdir -p /u01/colombo/maildata
+#chown -R vmail:vmail /u01/colombo/maildata
+#chmod 750 /u01/colombo/maildata
+
+#usermod -d /u01/colombo/maildata/phantoan phantoan
+#kiem tra home user
+#getent passwd phantoan
+#sudo doveadm user phantoan
+
+#useradd -d /u01/colombo/maildata/phantoanit -s /sbin/nologin phantoanit
+#passwd phantoanit
+
+#### cau hinh virtual user, su dung web app postfixadmin de quan ly
+# tao user va group day du tren cac storage glusterfs neu la cum storage sharded
+sudo groupadd -g 5000 vmail
+sudo useradd -g vmail -u 5000 vmail -d /var/vmail -m
+# neu dang chay tren mot node storage thi cac node khac tu dong bo khong can chown lai
+sudo chown -R vmail:vmail /u01/colombo/maildata/
+
+# postfixadmin su dung mysql luu tru
+sudo mysql -uroot
+CREATE DATABASE postfixadmin;
+CREATE USER 'postfixadmin'@'localhost' IDENTIFIED BY 'colomboxxx112233';
+GRANT ALL PRIVILEGES ON postfixadmin.* TO 'postfixadmin'@'localhost';
+FLUSH PRIVILEGES;
+# neu can thay doi quyen
+CREATE USER 'postfixadmin'@'10.60.%' IDENTIFIED BY 'colomboxxx112233';
+GRANT ALL PRIVILEGES ON postfixadmin.* TO 'postfixadmin'@'10.60.%';
+FLUSH PRIVILEGES;
+
+cd /u01/colombo/www/
+wget https://github.com/postfixadmin/postfixadmin/archive/postfixadmin-4.0.1.tar.gz
+vi config.local.php
+tar -xzf postfixadmin-4.0.1.tar.gz 
+mv postfixadmin-4.0.1 postfixadmin
+
+vi config.local.php
+<?php
+$CONF['session_backend'] = 'files'; //bo qua neu da cau hinh o php.ini
+$CONF['database_type'] = 'mysql';
+$CONF['database_host'] = '127.0.0.1'; //lu y doi sang ip maxscale cum glarea neu su dung
+$CONF['database_port'] = '4006';
+
+$CONF['database_user'] = 'postfixadmin';
+$CONF['database_password'] = 'colomboxxx112233';
+$CONF['database_name'] = 'postfixadmin';
+
+$CONF['configured'] = true;
+
+$CONF['default_language'] = 'en';
+
+$CONF['encrypt'] = 'sha512-crypt';
+$CONF['domain_path'] = 'YES';
+$CONF['domain_in_mailbox'] = 'NO';
+
+$CONF['virtual_mailbox_base'] = '/var/vmail'; //chi dinh cu the neu chua cau hinh trong dovecot va postfix
+$CONF['virtual_uid'] = 5000; //id user vmail
+$CONF['virtual_gid'] = 5000;
+$CONF["admin_email"] = "admin@vsystem.vn";
+$CONF['setup_password'] = 'pass';
+$CONF['footer_link'] = 'https://t.me/phantoanit';
+$CONF['footer_text'] = 'Contact me';
+#$CONF['theme_logo'] = 'images/logo_fb702.png';
+#$CONF['theme_favicon'] = 'images/logo_ce8fe.png';
+
+#nginx
+server {
+        server_name mail-admin.example.vn;
+        listen 443 ssl http2;
+
+        root /u01/colombo/www/postfixadmin/public/;
+        index index.php index.html;
+
+        access_log /u01/colombo/var/log/nginx/postfixadmin_access.log;
+        error_log /u01/colombo/var/log/nginx/postfixadmin_error.log;
+
+        location / {
+                try_files $uri $uri/ /index.php;
+        }
+
+        location ~ ^/(.+\.php)$ {
+                try_files $uri =404;
+        include fastcgi_params;
+                fastcgi_pass unix:/u01/colombo/var/run/php72-fpm.sock;
+                fastcgi_index index.php;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        }
+}
+
+#cai dat 
+./install.sh
+#Check settings, reload nginx and create Admin user
+http://mail.example.com/setup.php
+#neu can xoa cache
+rm -rf /u01/colombo/www/postfixadmin/templates_c/*
+#kiem tra cac thong so, neu pass tiep tuc cretea super admin account
+
+# ssl, bao mat quet virus, check mail spam, check lai installer, kiem tra cau hinh dovecot khi ket hop storage shared, backup database truong hop cum mysql loi, voi cau hinh postfix gateway ket noi transport smpt ho tro nhieu domain
+
+#Chuẩn bị user backup (BẮT BUỘC) Không dùng root trực tiếp
+CREATE USER 'backup'@'localhost' IDENTIFIED BY 'STRONG_PASSWORD';
+GRANT SELECT, SHOW VIEW, EVENT, TRIGGER, LOCK TABLES
+ON *.* TO 'backup'@'localhost';
+FLUSH PRIVILEGES;
+
+mysqldump --single-transaction --routines --events --triggers --hex-blob --databases db1 db2 | gzip > dump-db1-db2.sql.gz
+gunzip < dump.sql.gz | mysql -P 4006 -u roundcube -p
+
+
+##### cau hinh postfix gateway / EDGE
+# EDGE KHÔNG NHẬN LOCAL MAIL
+mydestination =
+local_recipient_maps =
+# Domain mà EDGE chịu trách nhiệm
+relay_domains = vsystem.vn
+# Transport routing
+transport_maps = hash:/etc/postfix/transport
+# Disable local delivery
+home_mailbox =
+mailbox_command =
+#virtual_mailbox_maps =
+#virtual_transport = 
+
+sudo vi /etc/postfix/transport
+vsystem.vn smtp:[10.60.1.30]:25,[10.60.2.40]:25,[10.60.3.30]:25
+# neu su dung transport lmtp
+vsystem.vn lmtp:[10.60.3.30]:24,[10.60.1.30]:24,[10.60.2.40]:24
+
+sudo postmap /etc/postfix/transport
+sudo systemctl reload postfix
+
+#cau hinh backend Dovecot LMTP mo port ket noi, node backend, neu dung smtp transport thi bo qua
+sudo vi /etc/dovecot/conf.d/10-master.conf
+service lmtp {
+  inet_listener lmtp {
+    #address = 10.60.1.30
+    port = 24
+  }
+}
+sudo systemctl restart dovecot
+
+#dong bo tu thu muc data cu 
+#rsync -avHAX --numeric-ids /u01/colombo/maildata/
+
+#systemctl stop postfix
+#systemctl stop dovecot
+#sudo tar --numeric-owner --xattrs --acls -czpf /u01/colombo/maildata.tar.gz -C /u01/colombo/maildata vsystem.vn
+#sudo tar --numeric-owner --xattrs --acls -xzpf /backup/maildata.tar.gz -C /u01/colombo/maildata
+
