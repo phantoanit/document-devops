@@ -200,8 +200,156 @@ sh.addShard("shard-wt-1/10.60.155.240:27018,10.60.155.188:27018")
 sh.addShard("shard-wt-2/10.60.155.240:27028,10.60.155.188:27028")
 # kiem tra ket qua bang lenh db.adminCommand({ getShardMap: 1 })
 # Bật sharding cho database và collection
-sh.enableSharding("mydb")
-sh.shardCollection("mydb.users", { _id: "hashed" })
+#sh.enableSharding("mydb")
+sh.enableSharding('colombo10263')
+#sh.shardCollection("mydb.users", { _id: "hashed" })
+var collections = {
+  "AccessToken": "_id",
+  "Article": "_id",
+  "Comment": "_id",
+  "Courseware": "_id",
+  "Group": "_id",
+  "OrderTransaction": "_id",
+  "Reservation": "_id",
+  "AccountDecl": "_id",
+  "ArticleStats": "_id",
+  "CommentStat": "_id",
+  "Customer": "_id",
+  "GroupStats": "_id",
+  "OTP": "_id",
+  "Resource": "_id",
+  "AccountLink": "_id",
+  "AuthorizationCode": "_id",
+  "Configuration": "_id",
+  "DataSet": "_id",
+  "ItemWord": "_id",
+  "PaymentInfo": "_id",
+  "ResourceUsage": "_id",
+  "Account": "userId",
+  "AutoCode": "_id",
+  "Contact": "_id",
+  "Decl": "_id",
+  "KPI": "_id",
+  "Post": "_id",
+  "RevenueReport": "_id",
+  "AccountProfileDecl": "_id",
+  "AutoId": "_id",
+  "CoreDecl": "type2",
+  "Document": "_id",
+  "LayoutSetting": "_id",
+  "PostStats": "_id",
+  "ServiceAccount": "_id",
+  "AccountProfile": "_id",
+  "BehaviorReport": "_id",
+  "CourseEssay": "_id",
+  "EmailTemplate": "_id",
+  "LessonChapter": "_id",
+  "Product": "_id",
+  "Subscriber": "_id",
+  "AccountStats": "_id",
+  "Block": "_id",
+  "Course": "_id",
+  "Entity": "code",
+  "LessonContent": "_id",
+  "ProductProperty": "_id",
+  "Thread": "_id",
+  "ActionStats": "_id",
+  "Bookmark": "_id",
+  "CoursewareElementLesson": "_id",
+  "Event": "_id",
+  "Lesson": "_id",
+  "ProductStats": "_id",
+  "User": "code",
+  "Activity": "_id",
+  "BounceEmail": "email",
+  "CoursewareElement": "_id",
+  "FormElement": "_id",
+  "LessonPlan": "_id",
+  "ProductTransaction": "_id",
+  "UserOnline": "_id",
+  "ApplicationLayout": "_id",
+  "Category": "_id",
+  "CoursewareElementOption": "_id",
+  "Form": "_id",
+  "Like": "_id",
+  "Rating": "_id",
+  "WidgetLayout": "type2",
+  "Application": "_id",
+  "CategoryStats": "_id",
+  "CoursewareElementQuestion": "_id",
+  "Friend": "site",
+  "Notification": "_id",
+  "Record": "_id",
+  "Word": "lang",
+  "ApplicationStats": "site",
+  "ChatMessage": "_id",
+  "CoursewareElementTopic": "_id",
+  "GroupCourse": "_id",
+  "Order": "_id",
+  "RefreshToken": "_id",
+  "ApplicationTemplate": "_id",
+  "ChatRoom": "_id",
+  "CoursewareLink": "_id",
+  "GroupDecl": "_id",
+  "OrderProduct": "_id",
+  "Region": "_id",
+  "WidgetLayout_ar": "type2",
+  "WidgetLayout_de": "type2",
+  "WidgetLayout_en": "type2",
+  "WidgetLayout_es": "type2",
+  "WidgetLayout_fr": "type2",
+  "WidgetLayout_id": "type2",
+  "WidgetLayout_ja": "type2",
+  "WidgetLayout_kh": "type2",
+  "WidgetLayout_ko": "type2",
+  "WidgetLayout_lo": "type2",
+  "WidgetLayout_ms": "type2",
+  "WidgetLayout_my": "type2",
+  "WidgetLayout_nl": "type2",
+  "WidgetLayout_pt": "type2",
+  "WidgetLayout_ru": "type2",
+  "WidgetLayout_tet": "type2",
+  "WidgetLayout_tl": "type2",
+  "WidgetLayout_vi": "type2",
+  "WidgetLayout_zh-CN": "type2",
+  "WidgetTemplate": "_id",
+  "WorkGroup": "_id",
+  "WorkPeriod": "_id",
+  "WorkSchedule": "_id",
+  "WorkTableEmployee": "_id",
+  "WorkflowLog": "_id",
+  "ZKTecoCommand": "_id",
+  "ZoomAccount": "_id",
+  "ZoomCreateProcess": "serverIp",
+  "ZoomPackage": "_id",
+  "CoreDecl_ar": "type2",
+  "CoreDecl_de": "type2",
+  "CoreDecl_en": "type2",
+  "CoreDecl_es": "type2",
+  "CoreDecl_fr": "type2",
+  "CoreDecl_id": "type2",
+  "CoreDecl_ja": "type2",
+  "CoreDecl_kh": "type2",
+  "CoreDecl_ko": "type2",
+  "CoreDecl_lo": "type2",
+  "CoreDecl_ms": "_id",
+  "CoreDecl_my": "type2",
+  "CoreDecl_nl": "type2",
+  "CoreDecl_pt": "type2",
+  "CoreDecl_ru": "_id",
+  "CoreDecl_tet": "type2",
+  "CoreDecl_tl": "type2",
+  "CoreDecl_vi": "type2",
+  "CoreDecl_zh-CN": "type2"
+};
+use colombo10263
+for(var c in collections){
+            	var key = collections[c], index = {};
+            	index[key] = 'hashed';
+            	db[c].createIndex(index);
+            	sh.shardCollection('colombo10263.' + c, index) //sh.shardCollection('colombo10263.CoreDecl_vi', {type2: 'hashed'})
+}
+
 # Kiểm tra trạng thái
 sh.status()
 
@@ -366,7 +514,11 @@ rs.initiate({
   ]
 })
 
+#restore toan bo
 /u01/colombo/mongodb1/bin/mongorestore  --port 27117 --authenticationDatabase admin -u colombo -p P0rtalmongo#123DLVB --verbose --db colombo10263 /u01/colombo/backup/colombo10263 --gzip
+# restore theo chi dinh, vao router de thuc hien
+/u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p Mongodb#25CSBVT --db colombo10263 /u01/colombo/restore/colombo10263/index
+/u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p Mongodb#25CSBVT --db colombo10263 /u01/colombo/restore/colombo10263/data
 
 DBCore:
 mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27117,10.60.155.165:27117/colombo10263?authSource=admin&readPreference=secondaryPreferred&retryWrites=true
