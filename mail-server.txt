@@ -317,9 +317,9 @@ type txt: _dmarc.mailvhv.coquan.net  ->  v=DMARC1; p=quarantine; rua=mailto:dmar
 #v=DMARC1; p=reject; rua=mailto:mailauth-reports@coquan.net
 
 type txt: mail._domainkey -> "v=DKIM1; h=sha256; k=rsa; 
-          p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjUEJ2RsCAVe36FBTT5ZVW7crcJhgnXQuvq0qV+eDdvfowJEyAPx5DVeBkswD4A+PQUdTRuvg0P12tKiP4ItTrChjYhIN/IXJ2JsM9rD0ml8aWbROJ8FxSeJmoAxpgt7qbmRAu172vT34qG8izyV9ZluC3hdnyRacJGxoPVWs7olefGI/Vckc4oUlrbM9OGFAIu7ya+5cdJmzX0+6hfDyaDGUgBBPoKWHF8jHJkJNQVZ1bX/HVfpKaX7uI5aZ8KFetvQ/xQmUTeFrNzT59YEsns4WP33/qWOiMS99uIceF74+O0FgZmZNkoELZJFb/4AGQ7ePN62KZRagoJaaSaoQjQIDAQAB" 
+          p=keyyyyyyy" 
 
-"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxVSwD9T4ses5STGhNpgqM6brAhJz7BuZFhmXtaV9F/RrHsw6DKbxGf5AGWNpbQ+EsV5hHnvnEq1vF4kGs9PhSZgS+8ztcjrizyYe8HIiNOrqqRWZJyVnXvTpIej/4YCdzrJKkBgOVY6yBw7Kzd9UljaBLROBeKz7O5Ibd3PSDbJtNdN1SLk3UwAbCHyjz3OCbg/8KDzcj27zVHRtfmekOoEY1vuenRzwdvDTeFmaj0Gb3S/6DxEXdUrQvzg2uwmvEiZis9Ob3OOfogspmc1IyNCJFI+5YmOoiiFqJr6/eojeAoJ4AAvpUNi3EbGWGj6dPfKF9l7LwEJDguO2/V0G7QIDAQAB"
+"v=DKIM1; h=sha256; k=rsa; p=keyyyy"
 
 # cau hinh dkim
 sudo apt install -y opendkim opendkim-tools
