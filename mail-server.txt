@@ -308,8 +308,8 @@ telnet localhost 143
 telnet localhost 24
 
 # cau hinh dns 
-type A: mail.vsystem.vn 10.60.1.30
-type MX: mail.vsystem.vn
+type A: mail.vsys.vn 10.60.1.30
+type MX: mail.vsys.vn
 type txt: v=spf1 ip4:183.81.35.99 a mx ~all #cho phép IP mailserver gửi mail, cho phép IP của record MX gửi
 type txt: _dmarc -> v=DMARC1; p=quarantine; aspf=r; sp=none
 type txt: _dmarc.mailvhv.coquan.net  ->  v=DMARC1; p=quarantine; rua=mailto:dmarc@mailvhv.coquan.net
@@ -330,13 +330,13 @@ sudo mkdir /etc/opendkim
 sudo chown -R opendkim:opendkim /etc/opendkim
 sudo mkdir -p /etc/opendkim/keys
 sudo chmod go-rwx /etc/opendkim/keys
-sudo mkdir -p /etc/opendkim/keys/mail.vsystem.vn
+sudo mkdir -p /etc/opendkim/keys/mail.vsys.vn
 
 sudo opendkim-genkey -s mail -d mailvhv.coquan.net -D /etc/opendkim/
-sudo opendkim-genkey -b 2048 -d mail.vsystem.vn -s mail -D /etc/opendkim/keys/mail.vsystem.vn
-sudo chown opendkim:opendkim /etc/opendkim/keys/mail.vsystem.vn/mail.private
-sudo chmod 600 /etc/opendkim/keys/mail.vsystem.vn/mail.private
-sudo cat /etc/opendkim/keys/mail.vsystem.vn/mail.txt
+sudo opendkim-genkey -b 2048 -d mail.vsys.vn -s mail -D /etc/opendkim/keys/mail.vsys.vn
+sudo chown opendkim:opendkim /etc/opendkim/keys/mail.vsys.vn/mail.private
+sudo chmod 600 /etc/opendkim/keys/mail.vsys.vn/mail.private
+sudo cat /etc/opendkim/keys/mail.vsys.vn/mail.txt
 
 sudo vi /etc/opendkim.conf
 Domain                  *
@@ -370,14 +370,14 @@ SignatureAlgorithm     rsa-sha256
 sudo vi /etc/opendkim/TrustedHosts
 127.0.0.1
 localhost
-mail.vsystem.vn
+mail.vsys.vn
 
 sudo vi /etc/opendkim/KeyTable
-mail._domainkey.mail.vsystem.vn mail.vsystem.vn:/etc/opendkim/keys/mail.vsystem.vn/mail.private
+mail._domainkey.mail.vsys.vn mail.vsys.vn:/etc/opendkim/keys/mail.vsys.vn/mail.private
 mail._domainkey.vsystem.vn vsystem.vn:mail:/etc/opendkim/keys/vsystem.vn/mail.private
 
 sudo vi /etc/opendkim/SigningTable
-*@mail.vsystem.vn mail._domainkey.mail.vsystem.vn
+*@mail.vsys.vn mail._domainkey.mail.vsys.vn
 *@coquan.net mail._domainkey.coquan.net
 *@mail.coquan.net mail._domainkey.coquan.net
 *@vsystem.vn mail._domainkey.vsystem.vn
@@ -479,7 +479,7 @@ $config['imap_conn_options'] = [
 #neu qua proxy upstrem nginx phai cau hinh Tránh lỗi: login loop CSRF token invalid redirect sai scheme
 #bo qua do khi bat test thay redirect
 #$config['force_https'] = true;
-#$config['trusted_hosts'] = ['mail.vsystem.vn'];
+#$config['trusted_hosts'] = ['mail.vsys.vn'];
 
 $config['smtp_host'] = 'tls://localhost:587';
 $config['smtp_auth'] = true;
