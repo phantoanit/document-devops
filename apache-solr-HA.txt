@@ -247,5 +247,13 @@ curl --user solr:B1telsolr#2022 "http://localhost:8983/solr/admin/info/system"
 #cau hinh production
 curl --user solr:B1telsolr#2022 http://localhost:8983/solr/Colombo/config -H 'Content-type:application/json' -d '{"set-property":{"updateHandler.autoSoftCommit.maxTime":1000,"updateHandler.autoSoftCommit.maxDocs":1000,"updateHandler.autoCommit.maxTime":4000000,"updateHandler.autoCommit.maxDocs":10000000}}'
 
-
+#kiem tra
+/u01/colombo/solr3/bin/solr status
+curl http://localhost:8983/solr/admin/info/system
+#neu can stop Solr
+/u01/colombo/solr1/bin/solr stop/start
+#neu can Restart Solr
+/u01/colombo/solr1/bin/solr restart
+#backup
+curl --user solr: passwd http://localhost:8983/solr/admin/collections?action=BACKUP&name=$DIR-NAMEFILE&collection=Colombo&location=$DEST
 
