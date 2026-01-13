@@ -90,6 +90,14 @@ sudo systemctl start maxscale
 #kiem tra cum
 maxctrl list servers
 
+#Chuẩn bị user backup (BẮT BUỘC) Không dùng root trực tiếp
+CREATE USER 'backup'@'localhost' IDENTIFIED BY 'STRONG_PASSWORD';
+GRANT SELECT, SHOW VIEW, EVENT, TRIGGER, LOCK TABLES
+ON *.* TO 'backup'@'localhost';
+FLUSH PRIVILEGES;
+
+mysqldump --single-transaction --routines --events --triggers --hex-blob --databases db1 db2 -ubackup | gzip > dump-db1-db2.sql.gz
+gunzip < dump.sql.gz | mysql -P 4006 -u roundcube -p
 
 ############# docker compose ###############
 version: '3.7'
