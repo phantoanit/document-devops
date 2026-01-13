@@ -227,6 +227,9 @@ for(var c in collections){
 
 # Kiểm tra trạng thái
 sh.status()
+#Sử dụng lệnh rs.status() để check trạng thái các node trong replica. Đảm bảo các node ứng dụng đều ở trạng thái Primary/Secondary
+#Sử dụng lệnh rs.stepDown(30, 30) để check đánh giá Down Primary hệ thống tự động chuyển primary sang Secondary.
+#Sử dụng lệnh db.serverStatus().connections để check số session đang được active trên cụm Database
 
 # them node arbiter chi de bau chon, Tránh mất majority, khong luu data
 # tao duong dan luu storage
