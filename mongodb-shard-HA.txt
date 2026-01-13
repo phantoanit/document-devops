@@ -426,6 +426,29 @@ for(var c in collections){
 #khi can update collections, vao port router
 /u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p xxxx --db colombo10263 --collection Category /u01/colombo/restore/update/CoreDecl.bson.gz --gzip
 
+#lenh thuong dung
+#khoi dong
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf
+/u01/colombo/mongodb1/bin/mongod -f /u01/colombo/etc/mongodb1/core-shard-1.conf
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf
+/u01/colombo/mongodb/bin/mongos -f /u01/colombo/etc/mongodb/csbcorerouter.conf
+# lenh stop
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf --shutdown
+pkill -f -9 '/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf'
+
+/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf --shutdown
+pkill -f -9 '/u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf'
+
+/u01/colombo/mongodb/bin/mongosh admin --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p Mongodb#25CSBVT --eval "db.shutdownServer()"
+pkill -f -9 '/u01/colombo/mongodb/bin/mongos -f /u01/colombo/etc/mongodb/csbcorerouter.conf'
+
+#kiem tra log
+tail -n 100 /u01/colombo/var/log/mongodb/csbcoreconfig.log
+#trang thai, thay doi port can kiem tra service cho phu hop
+/u01/colombo/mongodb/bin/mongosh --host=10.0.140.167 --port=8300 --authenticationDatabase=admin -u colombo -p xxxx colombo10263 --eval "rs.secondaryOk();var status = rs.status().members; for(var i in status){print(status[i].name+' '+status[i].stateStr);}"
+#console
+/u01/colombo/mongodb/bin/mongosh --host=10.0.140.167 --port 8300 --authenticationDatabase=admin -u colombo -p xxxx colombo10263
+
 DBCore:
 mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27117,10.60.155.165:27117/colombo10263?authSource=admin&readPreference=secondaryPreferred&retryWrites=true
 
