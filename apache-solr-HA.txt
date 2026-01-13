@@ -118,11 +118,16 @@ SOLR_ENV="/u01/colombo/solr1/bin/solr.in.sh"
 /u01/colombo/solr2/bin/solr status
 /u01/colombo/solr3/bin/solr status
 curl http://localhost:8983/solr/admin/info/system
+#neu can stop Solr
+/u01/colombo/solr1/bin/solr stop
+#neu can Restart Solr
+/u01/colombo/solr1/bin/solr restart
 
 # Upload cấu hình Solr vào ZooKeeper, các node sẽ đồng bộ config từ ZooKeeper
 /u01/colombo/solr1/bin/solr zk upconfig -z 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183 -d /u01/colombo/solr1/server/resources -n colombo
 # Tạo collection SolrCloud
 curl "http://localhost:8983/solr/admin/collections?action=CREATE&name=Colombo&numShards=2&replicationFactor=2&maxShardsPerNode=4&collection.configName=colombo&router.field=site"
+giai thich tham so
 action=CREATE	Tác vụ cần thực hiện.
 name=Colombo	Tên collection (chữ hoa/thường phân biệt).
 numShards=2	Số shard (phân vùng dữ liệu).
