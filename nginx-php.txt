@@ -1,0 +1,147 @@
+### cai nginx 1.24 qua source tar ###
+#ubuntu 24.04
+sudo chown colombo:colombo /u01/colombo/var
+sudo apt install -y libpcre2-dev
+./configure --prefix=/u01/colombo/usr --sbin-path=/u01/colombo/usr/sbin/nginx --conf-path=/u01/colombo/etc/nginx/nginx.conf --error-log-path=/u01/colombo/var/log/nginx/error.log --http-log-path=/u01/colombo/var/log/nginx/access.log --pid-path=/u01/colombo/var/run/nginx.pid --lock-path=/u01/colombo/var/run/lock/subsys/nginx --http-client-body-temp-path=/tmp/nginx_client_body --http-proxy-temp-path=/tmp/nginx_proxy --http-fastcgi-temp-path=/tmp/nginx_fastcgi --user=nginx --group=nginx --with-http_ssl_module --with-http_realip_module --without-http_ssi_module --without-http_userid_module --without-http_auth_basic_module --without-http_autoindex_module --without-http_geo_module --without-http_split_clients_module --without-http_uwsgi_module --without-http_scgi_module --with-http_v2_module --with-poll_module --with-http_stub_status_module --with-http_secure_link_module
+make -j$(nproc) && make install 
+sudo ln -s /u01/colombo/usr/sbin/nginx /usr/local/bin/php
+
+nginx path prefix: "/u01/colombo/usr"
+  nginx binary file: "/u01/colombo/usr/sbin/nginx"
+  nginx modules path: "/u01/colombo/usr/modules"
+  nginx configuration prefix: "/u01/colombo/etc/nginx"
+  nginx configuration file: "/u01/colombo/etc/nginx/nginx.conf"
+  nginx pid file: "/u01/colombo/var/run/nginx.pid"
+  nginx error log file: "/u01/colombo/var/log/nginx/error.log"
+  nginx http access log file: "/u01/colombo/var/log/nginx/access.log"
+  nginx http client request body temporary files: "/tmp/nginx_client_body"
+  nginx http proxy temporary files: "/tmp/nginx_proxy"
+  nginx http fastcgi temporary files: "/tmp/nginx_fastcgi"
+
+## chu y cac chi thi khi len moi truong production
+worker_processes auto; //Số process Nginx dùng để xử lý request, auto = số core CPU logic, Linux scheduler phân đều trên CPU Tránh: Ít worker → không tận dụng CPU Quá nhiều worker → context switch
+worker_rlimit_nofile 200000; //Giới hạn số file descriptor cho mỗi worker, fd bao gồm: Socket TCP, File tĩnh, Unix socket (php-fpm). Neu thap loi "too many open files". kiem tra dong bo voi os bang lenh "ulimit -n"
+events {
+    use epoll; //Chọn cơ chế I/O event epoll tối ưu nhất trên Linux
+
+    #worker_connections: theo RAM + ulimit + traffic thực
+    #Trường hợp	Khuyến nghị:
+    #VPS nhỏ (2GB RAM)	2048 – 4096
+    #App nội bộ	1024 – 2048
+    #WebSocket nhiều	4096 + tuning
+    #Chuẩn production phổ biến 8192, 8192 = 2¹³
+    #CDN / proxy	16384+
+    #neu worker_connections quá cao: FD table lớn, RAM bị giữ dù không dùng, Debug khó, Che giấu bottleneck thật (PHP, DB)
+    #8(cpu) × 8192 = 65,536 connections, hoan toan phu hop voi cpu 8core - 16gb ram
+    worker_connections 8192; //Số kết nối tối đa / 1 worker, Max connections ≈ worker_processes × worker_connections, Max connections ≈ concurrent connections < ulimit -n (FD)
+
+    multi_accept on; //Worker accept nhiều connection cùng lúc, Traffic lớn, ket noi dong thoi
+}
+
+sendfile on; // Kernel gửi file trực tiếp từ disk → socket Không qua user-space, KHÔNG nên dùng khi  NFS
+tcp_nopush on; // Gửi HTTP header trong 1 TCP packet, Tránh packet nhỏ liên tục, Chỉ hiệu quả khi: sendfile on
+tcp_nodelay on; // Tắt Nagle Algorithm, Gửi packet ngay, không chờ gom, Giảm latency cho: API Keepalive connection
+
+keepalive_timeout 30; // (giây), Giữ TCP connection mở sau khi trả response, neu Quá cao → chiếm FD, RAM
+keepalive_requests 1000; //Số request tối đa trên 1 keepalive connection, Tác dụng Giảm: TCP handshake, SSL handshake, 1000 là giá trị rất ổn cho production
+
+client_body_buffer_size 128k; // Buffer cho body request (POST, upload nhỏ)
+client_header_buffer_size 4k; // Buffer cho HTTP header thông thường
+#Header quá lớn Dùng large_client_header_buffers, Nếu thiếu: 400 Bad Request, Request Header Or Cookie Too Large
+large_client_header_buffers 4 16k; //Cho phép 4 buffer × 16k Dùng khi: Cookie lớn, JWT dài, Nhiều header
+
+client_body_timeout 15; //Thời gian chờ client gửi body, Client chậm / attack thi Nginx ngắt kết nối
+client_header_timeout 15; //Thời gian chờ gửi header, Bảo vệ khỏi: Slowloris attack
+send_timeout 30; //Thời gian chờ gửi response cho client, Áp dụng khi client đọc quá chậm
+    
+#Giảm access log nếu traffic lớn
+access_log off;
+# hoặc
+access_log /var/log/nginx/access.log main buffer=512k flush=5s;
+
+#Bảo vệ khi traffic tăng đột biến Rate limit
+limit_req_zone $binary_remote_addr zone=req_limit:10m rate=10r/s;
+server {
+    location / {
+        limit_req zone=req_limit burst=20 nodelay;
+    }
+}
+
+#Bật Nginx Stub Status, Trang này cung cấp các số liệu về kết nối hiện tại, số lượng yêu cầu đang xử lý và trạng thái đọc/ghi
+#Nginx mặc định thường đã có sẵn module ngx_http_stub_status_module. Kiểm tra bằng lệnh nginx -V.
+#Thêm cấu hình vào Nginx
+location /nginx_status {
+    stub_status on;
+    access_log off;
+    allow 127.0.0.1;
+    # allow <IP_CỦA_BẠN>; # Bảo mật: chỉ cho phép IP cụ thể
+    deny all;
+}
+#có thể kết hợp các URL này với các công cụ giám sát như Prometheus, Zabbix hoặc Netdata để vẽ biểu đồ theo dõi biến động traffic tự động
+
+
+### cai php 8.2 qua source tar ###
+# ubuntu 24.04
+# cai truoc ca thu vien phu thuoc
+sudo mkdir /u01/colombo/usr
+sudo chown colombo:colombo /u01/colombo/usr
+sudo mkdir /u01/colombo/etc/php-fpm.d
+sudo chown colombo:colombo /u01/colombo/etc/php-fpm.d
+sudo apt install -y build-essential autoconf pkg-config
+sudo apt install -y libc-client-dev libkrb5-dev libssl-dev libpng-dev libjpeg-dev libwebp-dev libfreetype6-dev libzip-dev libxml2-dev zlib1g-dev libxpm-dev libc6-dev libiconv-hook-dev libsqlite3-dev libmariadb-dev libldap2-dev libcurl4-openssl-dev libonig-dev libtidy-dev
+./configure  --prefix=/u01/colombo/usr --enable-static --with-libxml --enable-xml --enable-fpm --disable-all --with-openssl --with-system-ciphers --with-fpm-user=nginx --with-fpm-group=nginx --with-config-file-path=/u01/colombo/etc/php-fpm.d --with-config-file-scan-dir=/u01/colombo/etc/php.d --with-curl --enable-intl --enable-mbstring --enable-opcache --enable-soap --enable-sockets --with-tidy --with-pear=shared --without-cdb --without-pdo-sqlite --enable-gd --enable-ctype --disable-fileinfo --enable-phar --enable-simplexml --enable-session --with-zlib --with-jpeg --with-xpm --with-freetype --with-webp --with-iconv --enable-dom --with-zip --enable-filter --enable-xmlwriter --with-imap --with-imap-ssl --with-kerberos --enable-pdo --with-pdo-mysql=mysqlnd --with-pdo-sqlite --with-mysqli --with-sqlite3 --enable-tokenizer --enable-fileinfo --enable-exif --with-ldap
+make -j$(nproc) && make install 
+# cau hinh php.ini
+* php.ini options:
+   - error_reporting E_ALL & ~E_NOTICE & ~E_STRICT
+   - memory_limit > 16MB
+   - file_uploads enabled (for uploading attachments and import files)
+   - session.auto_start disabled
+   - suhosin.session.encrypt disabled
+   - mbstring.func_overload disabled
+   - pcre.backtrack_limit >= 100000
+
+   date.timezone = Asia/Ho_Chi_Minh
+    memory_limit = 256M
+    upload_max_filesize = 25M
+    post_max_size = 25M
+
+#chu y voi moi truong production 
+pm = dynamic // nen de khi production hoac ondemand(RAM thấp, traffic thấp)
+#pm.max_children = RAM dành cho PHP / RAM trung bình 1 PHP process, 1 PHP process ≈ 40 MB, neu phan bo 3.2 GB → 3200 / 40 = 80
+pm.max_children = 80 //trần chịu tải, Số PHP process tối đa, Mỗi process xử lý 1 request tại 1 thời điểm, request thứ 81 sẽ chờ (queue)
+
+pm.start_servers = 10 //số process ban đầu, Số PHP process được spawn khi PHP-FPM start, tranh Delay request đầu
+pm.min_spare_servers = 10 //worker rảnh tối thiểu, giữ ít nhất 10 process idle, neu thap Traffic tăng → spawn process liên tục / Tốn CPU, tăng latency
+pm.max_spare_servers = 30 // worker rảnh tối đa, Nếu idle > 30 → PHP-FPM kill bớt process, Giải phóng RAM, Tránh giữ worker không cần thiết
+pm.max_requests = 500 //chống memory leak, PHP process xử lý 500 request → tự restart, Memory leak nhỏ → tích lũy theo thời gian, neu khong set thi RAM tăng dần Server chạy lâu sẽ lag / crash
+
+request_terminate_timeout = 60 //Kill request PHP nếu chạy > 60s, Query SQL treo, API gọi external chậm, Infinite loop
+max_execution_time = 60 //PHP script tự dừng sau 60s, <= request_terminate_timeout
+
+#resolve symlink, check file tồn tại, tìm include_path. Realpath cache giữ kết quả trong RAM, tang toc Autoload (Composer), tang toc Framework lớn
+realpath_cache_size=4096k
+realpath_cache_ttl=600
+
+# bat de checklog
+request_slowlog_timeout = 5
+slowlog = /var/log/php-fpm/slow.log
+
+#Bật PHP-FPM Status Page, Trang này cung cấp thông tin về số lượng tiến trình đang chạy (active), nhàn rỗi (idle), và hàng đợi (queue). 
+pm.status_path = /status
+#ket hop cau hinh nginx de nhin thong tin 
+location ~ ^/(status|ping)$ {
+    access_log off;
+    allow 127.0.0.1;
+    # allow <IP_CỦA_BẠN>; # Chỉ cho phép IP tin cậy
+    deny all;
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_pass unix:/var/run/php/php-fpm.sock; # Thay bằng path socket của bạn
+}
+
+#chuan bi truoc file cau hinh va khoi dong php-fpm
+/u01/colombo/usr/sbin/php-fpm -c /u01/colombo/etc/php.ini -y /u01/colombo/etc/php-fpm.d/www.conf
+# tao symlink neu can
+sudo ln -s /u01/colombo/usr/bin/php /usr/local/bin/php
+
