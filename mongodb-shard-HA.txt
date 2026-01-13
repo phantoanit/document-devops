@@ -448,6 +448,8 @@ tail -n 100 /u01/colombo/var/log/mongodb/csbcoreconfig.log
 /u01/colombo/mongodb/bin/mongosh --host=10.0.140.167 --port=8300 --authenticationDatabase=admin -u colombo -p xxxx colombo10263 --eval "rs.secondaryOk();var status = rs.status().members; for(var i in status){print(status[i].name+' '+status[i].stateStr);}"
 #console
 /u01/colombo/mongodb/bin/mongosh --host=10.0.140.167 --port 8300 --authenticationDatabase=admin -u colombo -p xxxx colombo10263
+#backup
+/u01/colombo/mongodb/bin/mongodump --host 127.0.0.1 --port=27017 --db $db  --authenticationDatabase=admin -u colombo -p xxx --out $FILE --gzip
 
 DBCore:
 mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27117,10.60.155.165:27117/colombo10263?authSource=admin&readPreference=secondaryPreferred&retryWrites=true
