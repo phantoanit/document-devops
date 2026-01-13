@@ -1,0 +1,89 @@
+#Trên Ubuntu 24.04, logrotate chạy bằng systemd timer (không còn cron như trước), Timer mặc định: Chạy mỗi ngày 1 lần
+systemctl status logrotate.timer
+#Kiểm tra lần chạy gần nhất:
+journalctl -u logrotate
+
+#File cấu hình chính
+/etc/logrotate.conf
+weekly //xoay log mỗi tuần
+rotate 4 //giữ 4 bản log cũ
+create //tạo file log mới sau khi rotate
+compress //nén log (.gz)
+dateext //thêm ngày vào tên file
+include /etc/logrotate.d //load config con
+
+#Thư mục cấu hình service, Mỗi service thường có 1 file riêng:
+ls /etc/logrotate.d/
+#cau truc chung file config 
+/path/to/logfile {
+    option1
+    option2
+}
+#daily / weekly / monthly	Chu kỳ xoay
+#size 100M	Xoay khi vượt dung lượng
+#rotate N	Giữ N bản
+#compress	Nén log
+#delaycompress	Nén từ vòng thứ 2
+#missingok	Không lỗi nếu log không tồn tại
+#notifempty	Không xoay nếu log rỗng
+#copytruncate	Copy rồi truncate (cho app không reopen log), Không dùng copytruncate nếu service hỗ trợ reload
+#create 0640 user group	Tạo log mới với quyền
+#dateext	Thêm ngày
+#maxage 30	Xóa log > 30 ngày
+
+/u01/colombo/var/log/mongodb/*.log {
+        su colombo colombo
+        copytruncate
+        daily
+        rotate 90
+        notifempty
+        missingok
+        compress
+        dateext
+        dateformat -%Y-%m-%d
+}
+/u01/colombo/var/log/mongodb/27017.log {
+    daily
+    rotate 10
+    compress
+    dateext
+    missingok
+    notifempty
+    sharedscripts
+    copytruncate
+    postrotate
+        /bin/kill -SIGUSR1 `cat /u01/colombo/var/run/mongodb/27017.pid 2> /dev/null` 2> /dev/null || true
+    endscript
+}
+/u01/colombo/var/log/nginx/errorgw.log /u01/colombo/var/log/nginx/accessgw.log {
+	create 0644 colombo colombo
+	daily
+	rotate 90
+	missingok
+	notifempty
+	compress
+	sharedscripts
+	postrotate
+		/bin/kill -USR1 `cat /u01/colombo/var/run/nginxgw.pid 2>/dev/null` 2>/dev/null || true
+	endscript
+}
+/u01/colombo/var/log/php-fpm/error.log /u01/colombo/var/log/php-fpm/www-slow2.log {
+	create 0644 colombo colombo
+	rotate 30
+	daily
+	compress
+	sharedscripts	
+	missingok
+	delaycompress
+	postrotate
+		/bin/kill -SIGUSR1 `cat /u01/colombo/var/run/php-fpm.pid 2>/dev/null` 2>/dev/null || true
+	endscript
+}
+
+#Test không rotate thật (debug mode)
+sudo logrotate -d /etc/logrotate.conf
+#Force rotate ngay
+sudo logrotate -f /etc/logrotate.conf
+#File luu trạng thái logrotate, Xóa file này sẽ làm logrotate rotate lại từ đầu
+/var/lib/logrotate/status
+
