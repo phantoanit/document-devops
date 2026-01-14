@@ -1,0 +1,141 @@
+#iptables là công cụ cấu hình firewall cho kernel Linux (Netfilter)
+#Cho phép / chặn gói tin
+#NAT (SNAT, DNAT, MASQUERADE)
+#Forward giữa các interface
+
+iptables -V
+
+#filter	Firewall (mặc định)
+#nat	NAT (SNAT, DNAT, MASQUERADE)
+#mangle	Sửa header gói tin
+#raw	Bỏ qua conntrack
+#security	SELinux (ít dùng)
+
+#Table filter with chain
+#Chain	Ý nghĩa
+#INPUT	Gói tin vào server
+#OUTPUT	Gói tin đi từ server
+#FORWARD	Gói tin đi xuyên qua server
+
+#Table nat with chain
+#Chain	Ý nghĩa
+#PREROUTING	Trước khi routing
+#POSTROUTING	Sau khi routing
+#OUTPUT	NAT cho gói local
+
+iptables [-t table] <command> <chain> <match> <action>
+#Các command (hành động quản lý rule)
+#Tham số	Ý nghĩa
+-A	Append – thêm rule vào cuối
+-I	Insert – chèn rule vào vị trí
+-D	Delete – xoá rule
+-R	Replace – thay thế rule
+-L	List – xem rule
+-F	Flush – xoá tất cả rule
+-Z	Reset counter
+-P	Policy mặc định
+
+#Interface
+#Tham số	Ý nghĩa
+-i	Interface vào
+-o	Interface ra
+
+#Giao thức
+-p tcp
+-p udp
+-p icmp
+
+#Port
+#Tham số	Ý nghĩa
+--dport	Destination port
+--sport	Source port
+
+#Địa chỉ IP
+#Tham số	Ý nghĩa
+-s	Source IP
+-d	Destination IP
+
+#Trạng thái kết nối (RẤT QUAN TRỌNG)
+-m state --state NEW,ESTABLISHED,RELATED
+#State	Ý nghĩa
+NEW	Kết nối mới
+ESTABLISHED	Đã thiết lập
+RELATED	Liên quan
+INVALID	Không hợp lệ
+
+#Target (hành động – -j)
+Target	Ý nghĩa
+ACCEPT	Cho phép
+DROP	Drop gói (im lặng)
+REJECT	Từ chối có phản hồi
+LOG	Ghi log
+DNAT	NAT đích
+SNAT	NAT nguồn
+MASQUERADE	SNAT động
+REDIRECT	Chuyển port
+
+iptables -A INPUT -p tcp --dport 22 -j ACCEPT //table filter
+iptables -P INPUT DROP
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -t nat -A PREROUTING -i ens33 -p tcp --dport 25 -j DNAT --to-destination 10.0.0.10:25
+
+#Xem & debug rule iptables
+#-n	Không resolve DNS
+#-v	Hiển thị counter
+#--line-numbers	Số thứ tự rule
+
+iptables -L -n -v
+iptables -t nat -L -n -v
+
+#Lưu cấu hình iptables (Ubuntu)
+apt install iptables-persistent
+netfilter-persistent save
+
+###### vi du cau hinh #######
+
+*filter //Sử dụng table filter (firewall)
+#khai bao 3 chain/chuoi quy tac mac dinh
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0] //gói tin đi xuyên qua server
+:OUTPUT ACCEPT [0:0]
+
+#Cho phép kết nối đã được thiết lập tu truoc, thuong la goi phan hoi
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+#Cho phép ICMP (ping)
+-A INPUT -p icmp -j ACCEPT
+#cho phep Loopback, local porcess tren chinh thiet bi noi tai
+-A INPUT -i lo -j ACCEPT
+#ssh ket noi moi, goi tin co Destination port 22 di vao
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+#Port test performance
+-A INPUT -p tcp -m multiport -m state --state NEW -m tcp -m comment --comment "Ket noi do tai server" --dports 9000 -j ACCEPT
+# public entrypoint web
+-A INPUT -p tcp -m multiport -m state --state NEW -m comment --comment "Ket noi public" --dports 80,443 -j ACCEPT
+# cho phep ip noi bo ket noi App backend
+-A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m multiport --dports 8080,8081,3301 -j ACCEPT
+
+#OUTPUT chain – gói tin đi ra từ server
+# Loopback & ICMP
+-A OUTPUT -o lo -j ACCEPT
+-A OUTPUT -p icmp -j ACCEPT
+#Kết nối đã thiết lập, tra loi goi tin di vao truoc do
+-A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+#Đồng bộ thời gian
+-A OUTPUT -p udp --dport 123 -j ACCEPT
+#Resolve DNS
+-A OUTPUT -p udp --dport 53 -j ACCEPT
+#Log tất cả gói không match rule, log-level 4 = warning
+#/var/log/kern.log
+#/var/log/syslog
+-A INPUT -j LOG --log-level 4 --log-prefix "IPTABLES DROP"
+-A FORWARD -j LOG --log-prefix "IPTABLES DROP"
+-A OUTPUT -j LOG --log-prefix "IPTABLES DROP"
+
+#Reject tất cả còn lại (Default deny), Trả về ICMP host prohibited, client biết bị chặn con neu dung DROP im lang thi client khong biet
+-A INPUT -j REJECT --reject-with icmp-host-prohibited
+-A FORWARD -j REJECT --reject-with icmp-host-prohibited
+-A OUTPUT -j REJECT --reject-with icmp-host-prohibited
+
+#Áp dụng toàn bộ rule
+COMMIT
+
