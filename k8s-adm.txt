@@ -91,7 +91,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 #lenh join hien thi kem token se chay sau tren cac node
 
 #Thực hiện trên server k8s-master-2 và k8s-master-3
-#copy lenh join hien thi kem token, se giong nhu sau
+#copy lenh join hien thi kem token, neu la join worker node se khong co --control-plane --certificate-key, se giong nhu sau
 sudo kubeadm join 192.168.100.105:6443 --token your_token --discovery-token-ca-cert-hash your_sha --control-plane --certificate-key your_cert
 #tiep tuc cac buoc theo huong dan tren man hinh, se nhu sau:
 mkdir -p $HOME/.kube 
