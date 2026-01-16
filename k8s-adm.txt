@@ -1,5 +1,6 @@
 # Thực hiện trên cả 3 servers
 # add host
+sudo hostnamectl set-hostname k8s-master-xxxx
 echo -e "192.168.153.131 k8s-master-1\n192.168.153.132 k8s-master-2" | sudo tee -a /etc/hosts
 echo -e "172.16.0.150 k8s-master-1\n172.16.0.151 k8s-master-2\n172.16.0.152 k8s-master-3" | sudo tee -a /etc/hosts
 #echo -e "172.16.0.101 rancher.toandevops.click" | sudo tee -a /etc/hosts
