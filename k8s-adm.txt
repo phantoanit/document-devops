@@ -143,6 +143,27 @@ sudo systemctl restart containerd kubelet
 #kiem tra
 curl https://harbor.prod.vhv.com
 
+#neu muon go bo 1 node master ra khoi cum, Control-plane Ready	≥ 2, etcd quorum	còn ≥ 2/3, CNI hoạt động	tất cả Ready
+#Drain node:
+kubectl drain ubuntu --ignore-daemonsets --delete-emptydir-data
+kubectl drain k8s-master-2 --ignore-daemonsets --delete-emptydir-data
+export ETCDCTL_API=3
+etcdctl member list
+#Lấy MEMBER_ID của master cần xóa, rồi:
+etcdctl member remove <MEMBER_ID>
+#Xóa node:
+kubectl delete node k8s-master-2
+sudo kubeadm reset -f
+sudo rm -rf /etc/kubernetes /var/lib/etcd ~/.kube
+
+#neu muon go bo 1 node worker ra khoi cum
+#Drain node (trên master), pod duoc reschedule sang node khac
+kubectl drain worker-1 --ignore-daemonsets --delete-emptydir-data
+#Xóa node khỏi cluster
+kubectl delete node worker-1
+sudo kubeadm reset -f
+sudo rm -rf /etc/kubernetes /var/lib/kubelet /var/lib/etcd ~/.kube
+
 ## xy ly Xử lý disk pressure trên node:
 # xoa log container
 sudo journalctl --vacuum-time=1d
