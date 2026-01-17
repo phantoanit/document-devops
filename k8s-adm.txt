@@ -133,6 +133,10 @@ helm -n ingress-nginx install ingress-nginx -f ingress-nginx/values.yaml ingress
 # cai nfs common de mout pv tren woker node
 sudo apt install -y nfs-common
 
+#ket noi registry
+#tao secret, khi cau hinh deployment se chi dinh name secret da khai bao imagePullSecrets: - name: harbor-registry-secret
+kubectl create secret docker-registry harbor-registry-secret --docker-server=<DOMAIN_HARBOR_CUA_BAN> --docker-username=<TEN_DANG_NHAP> --docker-password=<MAT_KHAU> --docker-email=<EMAIL_CUA_BAN> -n <NAMESPACE_CUA_BAN>
+
 # loi xac thuc tsl https mot domain
 #Trên bất kỳ node nào (hoặc máy client) có thể truy cập harbor.prod.com
 echo | openssl s_client -connect harbor.prod.vhv.com:443 -showcerts 2>/dev/null \
