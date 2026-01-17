@@ -62,6 +62,7 @@ cp registry.csb.com.crt registry.csb.com.key ca.crt /etc/docker/certs.d/registry
 
 #cau hinh harbor khong tls
 #sua file harbor.yml comment lai block https
+#cau hinh docker de khi push registry khong dung https
 #Mở hoặc tạo file /etc/docker/daemon.json:
 sudo nano /etc/docker/daemon.json
 #Thêm (hoặc sửa) nội dung:
