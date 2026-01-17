@@ -121,7 +121,9 @@ helm pull ingress-nginx/ingress-nginx
 tar -xzf ingress-nginx-4.11.3.tgz
 
 vi ingress-nginx/values.yaml
->> Sửa type: LoadBalancing => type: NodePort
+#block service
+>> Sửa type: LoadBalancer => type: NodePort
+#block NodePort
 >> Sửa nodePort http: "" => http: "30080"
 >> Sửa nodePort https: "" => https: "30443"
 
