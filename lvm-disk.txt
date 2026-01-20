@@ -1,0 +1,173 @@
+LVM (Logical Volume Manager) là công nghệ quản lý ổ đĩa linh hoạt trong Linux, cho phép gom nhiều ổ cứng vật lý thành một "bể" chung (Volume Group - VG) và tạo ra các phân vùng logic (Logical Volume - LV) dễ dàng thay đổi kích thước (mở rộng, thu nhỏ) mà không cần tắt hệ thống, giúp quản lý lưu trữ hiệu quả, sao lưu snapshot dễ dàng, phù hợp cho các hệ thống cần sự co giãn về dung lượng. 
+CAC THANH PHAN CAU TAO
+Physical Volume (PV): Là các thiết bị lưu trữ vật lý (ổ cứng, SSD, phân vùng ổ cứng) được sử dụng làm nền tảng.
+Volume Group (VG): Nhóm một hoặc nhiều PV lại với nhau, tạo thành một không gian lưu trữ ảo lớn.
+Logical Volume (LV): Là các phân vùng logic được tạo ra từ VG. LV có thể được tạo, mở rộng, thu nhỏ hoặc xóa linh hoạt. 
+
++-------------------------------------------------------------+
+|                Hệ điều hành / File System                   |
+|      (Gắn vào /var, /home, /root thông qua các LV)          |
++-------------------------------------------------------------+
+              ^                           ^
+              |                           |
++--------------------------+    +-----------------------------+
+|     Logical Volume 1     |    |      Logical Volume 2       |  <-- Cắt nhỏ VG
+|        (LV - 50GB)       |    |         (LV - 100GB)        |
++--------------------------+    +-----------------------------+
+              ^                           ^
+              |___________________________|
+                            |
+            +---------------------------------------+
+            |          Volume Group (VG)            |  <-- "Cái túi" chung
+            |            (Tổng: 150GB)              |
+            +---------------------------------------+
+                            |
+              _____________________________
+             |                             |
++--------------------------+    +-----------------------------+
+|   Physical Volume 1      |    |     Physical Volume 2       |  <-- Ổ cứng vật lý
+|      (PV - 80GB)         |    |        (PV - 70GB)          |
++--------------------------+    +-----------------------------+
+             |                             |
+      [/dev/sdb1]                   [/dev/sdc1]
+
+Cách quản lý LVM hiệu quả
+Để quản lý LVM, bạn sử dụng các nhóm lệnh tương ứng với 3 tầng (PV, VG, LV):
+A. Quản lý Tầng Vật lý (Physical Volume - PV)
+pvdisplay: Xem thông tin chi tiết các ổ cứng vật lý đã tham gia LVM.
+pvcreate [tên_ổ_đĩa]: Thêm một ổ cứng mới vào "hàng chờ" LVM.
+B. Quản lý Nhóm (Volume Group - VG)
+vgdisplay: Xem tổng dung lượng còn trống trong nhóm.
+vgextend [tên_vg] [tên_pv]: Mở rộng dung lượng của VG bằng cách add thêm một ổ cứng vật lý mới. Đây là cách bạn "nâng cấp" bộ nhớ cho máy chủ mà không cần tắt máy.
+vgs: Xem nhanh danh sách các VG hiện có.
+C. Quản lý Phân vùng ảo (Logical Volume - LV)
+lvdisplay: Xem thông tin các phân vùng ảo đang chạy.
+lvextend -L +10G [đường_dẫn_lv]: Tăng ngay lập tức 10GB cho một phân vùng (ví dụ tăng dung lượng cho ổ /data khi sắp đầy).
+lvreduce: Giảm dung lượng (cần cẩn trọng để tránh mất dữ liệu).
+lvs: Xem nhanh danh sách các LV.
+Tóm tắt tư duy quản lý:
+Gộp các ổ cứng vật lý (PV) vào một cái túi lớn (VG).
+Chia cái túi lớn đó thành các ngăn nhỏ (LV) để sử dụng.
+Khi một ngăn (LV) bị đầy, chỉ cần dùng lệnh lvextend để lấy thêm dung lượng còn dư từ túi (VG) bù sang.
+Khi cái túi (VG) hết chỗ, chỉ cần cắm thêm ổ cứng mới, biến nó thành PV rồi vgextend vào túi.
+
+LV: Dùng để chia nhỏ không gian cho từng ứng dụng (Nên có nhiều).
+VG: Dùng để gộp tài nguyên ổ cứng vật lý (Thường chỉ cần 1 hoặc 2(1 ssd 1 hdd)).
+
+
+#Để cấu hình LVM, bạn thường thực hiện qua các bước sau trên Terminal:
+Khởi tạo PV: pvcreate /dev/sdb (Biến ổ đĩa sdb thành Physical Volume).
+Tạo VG: vgcreate my_group /dev/sdb (Tạo nhóm tên "my_group").
+Tạo LV: lvcreate -L 10G -n my_data my_group (Tạo phân vùng ảo 10GB tên "my_data").
+Định dạng và sử dụng: mkfs.ext4 /dev/my_group/my_data sau đó mount vào thư mục cần dùng.
+
+
+#nap lai o khi them ma khong xuat hien o
+echo "- - -" | sudo tee /sys/class/scsi_host/host*/scan
+
+#disk (Ổ đĩa vật lý/ổ đĩa ảo)
+Nó là thiết bị gốc, chưa chia nhỏ.
+#part (Partition - Phân vùng)
+Đây là các phân vùng con được chia ra từ ổ đĩa chính (disk). Mỗi phân vùng có thể chứa một hệ thống tập tin riêng biệt hoặc phục vụ mục đích riêng (như boot, swap).
+#lvm (Logical Volume Manager), Ví dụ: ubuntu--vg-ubuntu--lv
+Đây là một cơ chế quản lý ổ đĩa linh hoạt của Linux. Thay vì dùng phân vùng cố định, LVM gom các phân vùng vật lý vào một "nhóm" (Volume Group) rồi chia ra thành các "ổ đĩa ảo" (Logical Volume),  dễ dàng mở rộng dung lượng ổ đĩa / ngay cả khi hệ thống đang chạy. 
+#rom (Read-Only Memory), Ví dụ: sr0.
+Đây thường là ổ đĩa CD-ROM hoặc DVD-ROM. Trong VMware, đây chính là tệp ISO cài đặt Ubuntu mà bạn đã gắn vào máy ảo.
+#loop: 
+Các thiết bị vòng lặp, thường dùng cho các gói phần mềm dạng Snap (phổ biến trên Ubuntu). Mỗi phần mềm Snap khi chạy sẽ được mount như một phân vùng ảo.
+#crypt: 
+Phân vùng đã được mã hóa (thường sử dụng LUKS để bảo mật dữ liệu).
+#raid: 
+Thiết bị thuộc một mảng RAID (kết hợp nhiều ổ đĩa để tăng tốc độ hoặc dự phòng dữ liệu).
+
+# use case Logical Volume: "ổ đĩa ảo"
+Thêm ổ mới → add vào VG(Volume Group) → extend LV root → resize filesystem (online)
+# case Standard Partitioning - Physical Partitioning - Legacy Partitioning
+Thêm ổ mới → partition(fdisk, gdisk) -> Format filesystem -> Mount
+
+#cong cu dinh dang
+fdisk truyền thống làm việc với partition table MBR, chỉ hỗ trợ MBR, Disk < 2TB
+cfdisk, Disk < 2TB
+gdisk (GPT fdisk), Disk > 2TB
+sgdisk (automation / CI / script)
+parted dùng LBA 64-bit, Hỗ trợ GPT mặc định, Online resize, Scriptable, Disk > 2TB
+
+#### dinh dang disk #####
+#Trước khi partition, xoa dau vet partition cu Tránh conflict MBR/GPT cũ
+wipefs -a /dev/sdb
+
+## case 1 dung gdisk dinh dang 
+sudo gdisk /dev/sdb
+#Trong gdisk:
+n
+Partition number (1-128, default 1): enter
+First sector (34-..., default = 2048): enter
+Last sector (..., default = ...): enter
+Hex code or GUID (L to show codes, Enter = 8300): 8E00 enter(8E00 = Linux LVM)
+p: kiem tra partition
+w: ghi toan bo thay doi -> choise y
+
+## case 2 dung parted
+sudo parted /dev/sdb
+#Trong parted:
+mklabel gpt
+mkpart primary 0% 100%
+set 1 lvm on
+quit
+
+##Tạo LVM từ partition mới, Volume Group da ton tai hoac tao moi, mo rong VG tu disk moi KHÔNG ảnh hưởng dữ liệu cũ
+#Tạo Physical Volume
+sudo pvcreate /dev/sdb1 
+
+#Tao VG neu khong co
+sudo vgcreate vg_data /dev/sdb1 (Tạo nhóm tên "my_group")
+
+##Add vào Volume Group hiện có, lua chon vg la ubuntu-vg
+sudo vgextend ubuntu-vg /dev/sdb1
+#kiem tra
+sudo vgs
+
+##Tạo Logical Volume mới (tuỳ mục đích)
+#LV cho /u01, name u01
+sudo lvcreate -L 100G -n u01 ubuntu-vg
+#Hoặc dùng hết dung lượng còn trống:
+sudo lvcreate -l 100%FREE -n data vg_data
+#Format filesystem, ext4 (hoac mkfs.xfs nếu cần)
+sudo mkfs.ext4 /dev/vg_data/data
+#Mount và persist
+sudo mkdir /u01
+sudo mount /dev/vg_data/data /u01
+#Lưu /etc/fstab:
+echo '/dev/vg_data/data /u01 ext4 defaults 0 2' | sudo tee -a /etc/fstab
+
+##Mở rộng Logical Volume đang dùng
+#Giả sử cần mở rộng /u01 (lv name: vg0-data), them tham so -r hoac se phai tu resize sau do
+lvextend -r -l +100%FREE /dev/vg0/data
+#Hoặc chỉ thêm 200G:
+lvextend -r -L +200G /dev/vg0/data
+# case resize2fs neu chua resize (hoac xfs_growfs voi dinh dang xfs)
+#Kiểm tra FS
+df -Th /
+sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+#Kiem tra 
+df -h /
+lsblk
+
+##case mo rong voi phan vung tieu chuan Standard Partitioning khong LVM
+dùng công cụ như fdisk hoặc parted để nới rộng phân vùng vật lý /dev/sdb1 trước.
+resize2fs để hệ điều hành nhận diện dung lượng mới:
+sudo resize2fs /dev/sdb1
+#Kiem tra 
+df -h /
+lsblk
+
+
+
+
+
+
+
+
+
+
+
