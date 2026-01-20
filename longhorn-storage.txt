@@ -1,0 +1,119 @@
+Block Storage (lưu trữ khối) là một loại hình lưu trữ dữ liệu trong đó dữ liệu được chia thành các khối (block) có kích thước bằng nhau, mỗi khối có một địa chỉ định danh duy nhất. Khác với việc lưu trữ tệp tin thông thường, hệ thống không quan tâm đến nội dung bên trong khối mà chỉ tập trung vào việc lưu trữ và truy xuất các khối này một cách nhanh nhất. 
+Block Storage: Chia dữ liệu thành các khối thô (raw blocks) không có cấu trúc phân cấp. Nó giống như một ổ cứng trống chưa định dạng, cần được gắn vào máy chủ và cài đặt hệ điều hành để sử dụng.
+File Storage: Lưu trữ dữ liệu dưới dạng tệp tin trong cấu trúc phân cấp (thư mục và thư mục con). Đây là cách người dùng phổ thông thường dùng trên máy tính (như ổ C, D).
+Object Storage: Lưu trữ dữ liệu dưới dạng các "đối tượng" (object) độc lập trong một không gian phẳng (flat namespace). Mỗi đối tượng bao gồm dữ liệu, siêu dữ liệu (metadata) chi tiết và một mã định danh duy nhất
+
+#Cài gói cần thiết trên TẤT CẢ node
+sudo apt install -y open-iscsi nfs-common
+sudo systemctl enable --now iscsid
+#Kiểm tra mount propagation
+findmnt -o TARGET,PROPAGATION /
+Phải là:
+/
+shared
+Nếu chưa:
+sudo mount --make-rshared /
+
+#(Khuyến nghị) Format disk
+sudo mkfs.ext4 /dev/sdb
+
+#Cài Longhorn bằng Helm
+helm repo add longhorn https://charts.longhorn.io
+helm repo update
+kubectl create namespace longhorn-system
+helm install longhorn longhorn/longhorn --namespace longhorn-system
+#Chờ 2–5 phút roi Kiểm tra trạng thái , Tất cả phải Running
+kubectl get pods -n longhorn-system
+#Truy cập Longhorn UI qua NodePort
+#doi service tu type ClusterIp sang NodePort de truy cap duoc tu ip workernode
+kubectl edit svc longhorn-frontend -n longhorn-system
+#xem port va truy cap
+kubectl -n longhorn-system get svc
+
+#Thêm disk vào Longhorn (BƯỚC QUAN TRỌNG)
+Vào Longhorn UI → Node → từng node
+Thêm disk:
+Path: /var/lib/longhorn
+Disk Type: Filesystem
+Allow Scheduling: ✅
+
+Longhorn sẽ:
+mount /dev/sdb
+quản lý replica trên disk này
+
+#Cấu hình mặc định nên chỉnh (PRODUCTION)
+Replica count
+Settings → Default Replica Count
+2 hoặc 3
+| Node    | Replica |
+| ------- | ------- |
+| 3 node  | 2       |
+| ≥5 node | 3       |
+
+#Data locality
+Data Locality: best-effort
+Pod chạy trên node nào thì ưu tiên replica node đó → giảm latency.
+
+#Automatic salvage
+Auto Salvage: enabled
+Tự phục hồi volume khi node chết đột ngột.
+
+#StorageClass Longhorn
+#Kiểm tra:
+kubectl get storageclass
+longhorn (default)
+#Nếu chưa là default:
+kubectl patch storageclass longhorn \
+  -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+#Test tạo PVC & Pod, longhorn tu tao PV
+#PVC test
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi
+
+kubectl apply -f pvc.yaml
+kubectl get pvc
+
+#Pod test
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    command: ["sh", "-c", "sleep 3600"]
+    volumeMounts:
+    - mountPath: /data
+      name: vol
+  volumes:
+  - name: vol
+    persistentVolumeClaim:
+      claimName: test-pvc
+
+kubectl apply -f pod.yaml
+
+kubectl exec -it test-pod -- sh
+cd /data
+echo "hello longhorn" > test.txt
+cat test.txt
+
+
+Sau đó:
+Xoá Pod
+Tạo lại Pod dùng cùng PVC
+Kiểm tra file còn không
+
+#test HA, kiem tra pod tren node khac, du lieu con khong, doc ghi duoc khong
+sudo shutdown now
+
