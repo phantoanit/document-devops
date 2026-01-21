@@ -12,6 +12,9 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.pas
 
 #vao web ui va cau hinh new app
 
+vao git tao Project Access Token neu project la private, quyen read_repository, Role tối thiểu: Reporter
+o giao dien argocd, vao setting, add project, chi sua cac thuoc tinh nhu SCOPED REPOSITORIES, DESTINATIONS
+
 Enable Auto-Sync
 #Prune Resources, Xoá resource không còn tồn tại trong Git, Nguy hiểm nếu dùng sai path, neu 1 app = 1 path co the su dung|
 Self Heal //Khi nên bật khi hông cho kubectl tay, Tự sửa drift khi có thay đổi ngoài Git vi du neu tu chay lenh tren k8s nhu kubectl scale deploy nginx --replicas=5 thi Argo CD tự scale về đúng nhu cau hinh trong manifest Git
@@ -52,3 +55,4 @@ Prune Last ✅
 Respect IgnoreDifferences ✅
 Server-Side Apply ✅
 Deletion Finalizer ✅
+
