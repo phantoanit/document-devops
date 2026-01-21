@@ -1,0 +1,54 @@
+#cai dat
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#kiem tra
+kubectl get pods -n argocd
+#kiem tra service, chinh sua neu can truy cap web ui qua nodeport
+kubectl get svc -n argocd
+
+#truy cap voi login name: admin
+#lay pass, truy cap va doi mat khau
+kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d
+
+#vao web ui va cau hinh new app
+
+Enable Auto-Sync
+#Prune Resources, Xoá resource không còn tồn tại trong Git, Nguy hiểm nếu dùng sai path, neu 1 app = 1 path co the su dung|
+Self Heal //Khi nên bật khi hông cho kubectl tay, Tự sửa drift khi có thay đổi ngoài Git vi du neu tu chay lenh tren k8s nhu kubectl scale deploy nginx --replicas=5 thi Argo CD tự scale về đúng nhu cau hinh trong manifest Git
+Set Deletion Finalizer //nen bat, Gắn finalizer vào Application, Đảm bảo resource được prune hết trước khi app bị xoá, neu khong bat thi Xoá Application Resource có thể bị “mồ côi”
+
+##Sync Options
+Skip Schema Validation
+#Bỏ qua kiểm tra schema, rui ro YAML sai field → apply vẫn chạy → fail runtime
+Auto-Create Namespace #KHÔNG nên bật khi Namespace cần quota / policy - Namespace do infra team quản lý
+Prune Last //Apply resource mới → prune resource cũ SAU CÙNG, Khi nên bật Migration - Tránh downtime (svc, ingress)
+Apply Out of Sync Only //Chỉ apply resource bị OutOfSync, Bỏ qua resource đã Sync, Nhanh hơn Ít rủi ro restart không cần thiết
+#Respect Ignore Differences, Tôn trọng ignoreDifferences cấu hình, Khi nên bật: Có HPA - Admission webhook mutate object
+#Server-Side Apply Dùng kubectl apply --server-side, K8s quản lý field ownership, Giảm conflict, CRD phức tạp, Multi-controller
+Prune Propagation Policy
+foreground: xoá con trước, cha sau: Deployment → Pod → ReplicaSet, Muốn xoá sạch, không rác, Production
+Replace: Xoá resource → tạo lại (thay vì patch), Khi cần Thay đổi immutable field, selector, clusterIP, volumeClaimTemplate, Rủi ro: Downtime
+Retry: Retry sync khi lỗi tạm thời, Khi nên bật: Cluster nhiều webhook, Network chập chờn, CRD tạo chậm
+
+##goi y theo moi truong
+#DEV
+Auto-Sync ✅
+Prune ✅
+Self Heal ❌
+Auto-Create Namespace ✅
+Retry ✅
+
+#STAGING
+Auto-Sync ✅
+Prune ✅
+Self Heal ✅
+Apply OutOfSyncOnly ✅
+
+#PRODUCTION (An toàn)
+Auto-Sync ❌ (manual approve)
+Prune ❌ / selective
+Self Heal ✅
+Prune Last ✅
+Respect IgnoreDifferences ✅
+Server-Side Apply ✅
+Deletion Finalizer ✅
