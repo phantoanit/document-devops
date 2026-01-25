@@ -13,7 +13,8 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.pas
 #vao web ui va cau hinh new app
 
 vao git tao Project Access Token neu project la private, quyen read_repository, Role tối thiểu: Reporter
-o giao dien argocd, vao setting, add project, chi sua cac thuoc tinh nhu SCOPED REPOSITORIES, DESTINATIONS
+o giao dien argocd, vao setting, reponsitory, update user va pass git
+o giao dien argocd, vao setting, add project, chi sua cac thuoc tinh nhu SOURCE REPOSITORIES, SCOPED REPOSITORIES, DESTINATIONS, cluster resource allow list, namespace resource allow list
 
 Enable Auto-Sync
 #Prune Resources, Xoá resource không còn tồn tại trong Git, Nguy hiểm nếu dùng sai path, neu 1 app = 1 path co the su dung|
