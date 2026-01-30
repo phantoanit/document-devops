@@ -37,7 +37,7 @@ chown colombo:colombo /u01/colombo/mongodb/mongodb-keyfile
 # cau hinh shard cho cum bao gom cau hinh node luu config (data, meta), node shard, node router
 # uu tien cum co so node la so le 3, 5, 7,.. de Có majority toi uu, neu la so chan nhu 4, 6 nen de 1 node la backup khong cho vote + priority hoac node nay chi de aribiter chu khong ghi data do ton them disk
 
-# cau hinh node luu config data
+# cau hinh node luu config data, 3 node configsvr
 # tao duong dan luu storage
 mkdir -p /u01/colombo/mongodb/wtconfig
 vi /u01/colombo/etc/mongodb/wtconfig.conf
@@ -106,7 +106,7 @@ db.grantRolesToUser("colombo",["executeFunctions"])
 # /u01/colombo/mongodb/bin/mongos -f /u01/colombo/etc/mongodb/wt-router.conf
 # kiem tra ket qua bang lenh db.adminCommand({ getShardMap: 1 })
 
-# cau hinh node shard
+# cau hinh node shard, hoac la 3 node, hoac la 2 node + 1 node arbiter
 # tao duong dan luu storage
 mkdir -p /u01/colombo/mongodb/shard-wt-1
 vi /u01/colombo/etc/mongodb/shard-wt-1.conf
@@ -232,7 +232,7 @@ sh.status()
 #Sử dụng lệnh rs.stepDown(30, 30) để check đánh giá Down Primary hệ thống tự động chuyển primary sang Secondary.
 #Sử dụng lệnh db.serverStatus().connections để check số session đang được active trên cụm Database
 
-# them node arbiter chi de bau chon, Tránh mất majority, khong luu data
+# them node arbiter chi de bau chon, Tránh mất majority, khong luu data, cung port voi 2 shard cua 2 node truoc do
 # tao duong dan luu storage
 mkdir -p /u01/colombo/mongodb/arbiter-shard-wt-1
 mkdir -p /u01/colombo/mongodb/arbiter-shard-wt-2
