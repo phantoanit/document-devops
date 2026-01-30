@@ -82,7 +82,7 @@ GC_TUNE=" \
 -XX:G1HeapRegionSize=1m \
 -XX:MaxGCPauseMillis=250 \
 -XX:InitiatingHeapOccupancyPercent=75 \
--XX:+AggressiveOpts \ #neu la java 17 bat co the loi
+-XX:+AggressiveOpts \ # CHU Y neu la java >=11 bat co the loi
 "
 ZK_HOST="10.0.140.218:2181,10.0.140.226:2181,10.0.140.230:2181,10.0.140.234:2181,10.0.140.241:2181"
 ZK_CLIENT_TIMEOUT="180000"
