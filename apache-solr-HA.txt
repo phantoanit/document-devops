@@ -135,6 +135,8 @@ replicationFactor=2	Mỗi shard có 2 bản sao (primary + replica).
 maxShardsPerNode=4	Mỗi node Solr có thể chứa tối đa 4 shard.
 collection.configName=colombo	Dùng configset “colombo” bạn đã upload ở bước 1.
 router.field=site	Trường trong tài liệu dùng để phân phối dữ liệu giữa các shard (optional, chỉ cần nếu bạn muốn routing theo giá trị field).
+# neu muon xoa collection neu da tao do truoc do 
+curl "http://localhost:8983/solr/admin/collections?action=DELETE&name=Colombo"
 #Đưa file bảo mật vào ZooKeeper
 vi /u01/colombo/solr1/security.json
 {
