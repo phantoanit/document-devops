@@ -238,6 +238,26 @@ vi /u01/colombo/solr1/security.json
     }
   }
 }
+#cau hinh ngan gon hon
+/u01/colombo/solr1/security.json
+{
+"authentication":{ 
+   "blockUnknown": true, 
+   "class":"solr.BasicAuthPlugin",
+   "credentials":{"solr":"IV0EHq1OnNrj6gvRCwvFwTrZ1+z1oBbnQdiVC3otuq0= Ndd7LKvVBAaZIF0QAVi1ekCfAJXr1GGfLtRUXhgrF8c="},
+   "realm":"solr",
+   "forwardCredentials": true
+},
+"authorization":{
+   "class":"solr.RuleBasedAuthorizationPlugin",
+   "permissions":[{"name":"security-edit",
+      "role":"admin"},
+{ "name": "all", "collection": "Colombo", "role": "admin"},
+{ "name": "all", "role": "admin"}],
+   "user-role":{"solr":"admin"}
+}}
+
+
 /u01/colombo/solr1/bin/solr zk cp file:/u01/colombo/solr1/security.json zk:/security.json -z 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
 #Đổi mật khẩu user solr
 curl --user solr:SolrRocks http://localhost:8983/solr/admin/authentication -H 'Content-type:application/json' -d '{"set-user": {"solr":"B1telsolr#2022"}}'
