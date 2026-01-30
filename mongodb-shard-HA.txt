@@ -35,6 +35,7 @@ chmod 400 /u01/colombo/mongodb/mongodb-keyfile
 chown colombo:colombo /u01/colombo/mongodb/mongodb-keyfile
 
 # cau hinh shard cho cum bao gom cau hinh node luu config (data, meta), node shard, node router
+# uu tien cum co so node la so le 3, 5, 7,.. de Có majority toi uu, neu la so chan nhu 4, 6 nen de 1 node la backup khong cho vote + priority hoac node nay chi de aribiter chu khong ghi data do ton them disk
 
 # cau hinh node luu config data
 # tao duong dan luu storage
