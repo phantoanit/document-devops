@@ -458,3 +458,58 @@ mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27117,10.60.155.165:27117/co
 DBWT:
 mongodb://colombo:P0rtalmongo#123DLVB@10.60.155.240:27017,10.60.155.165:27017/colombo10263?authSource=admin&readPreference=secondaryPreferred&retryWrites=true
 
+### CAU HINH CUM REPLICA ONLY, NO SHARD
+#chu y doi cac duong dan phu hop, neu chua co thi tao moi truoc, cau hinh giong nhau tren ca 3 node
+vi /etc/mongod.conf
+systemLog:
+  destination: file
+  path: /data/mongo/log/mongod.log
+  logAppend: true
+
+storage:
+  dbPath: /data/mongo/db
+  journal:
+    enabled: true
+
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+processManagement:
+  fork: true
+
+replication:
+  replSetName: rs0
+
+#khoi dong
+mongod -f /etc/mongod.conf
+#kiem tra
+ps aux | grep mongod
+#KHỞI TẠO REPLICA SET (CHỈ LÀM 1 LẦN)
+👉 Thực hiện chỉ trên node1
+mongosh
+rs.initiate({
+  _id: "rs0",
+  members: [
+    { _id: 0, host: "node1:27017", priority: 2 },
+    { _id: 1, host: "node2:27017", priority: 1 },
+    { _id: 2, host: "node3:27017", priority: 1 }
+  ]
+})
+⏳ Chờ ~5–10 giây
+#Kiểm tra trạng thái
+rs.status()
+Bạn sẽ thấy:
+node1 → PRIMARY
+node2, node3 → SECONDARY
+#bat tat mot not de kiem tra failover
+#BẬT AUTH + KEYFILE tuong tu cum shard rs
+Tạo user admin (trên PRIMARY)
+use admin
+db.createUser({
+  user: "admin",
+  pwd: "StrongPassword",
+  roles: [ { role: "root", db: "admin" } ]
+})
+Kết nối:
+mongosh -u admin -p --authenticationDatabase admin
