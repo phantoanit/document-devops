@@ -37,6 +37,11 @@ chown colombo:colombo /u01/colombo/mongodb/mongodb-keyfile
 # cau hinh shard cho cum bao gom cau hinh node luu config (data, meta), node shard, node router
 # uu tien cum co so node la so le 3, 5, 7,.. de Có majority toi uu, neu la so chan nhu 4, 6 nen de 1 node la backup khong cho vote + priority hoac node nay chi de aribiter chu khong ghi data do ton them disk
 
+mkdir -p /u01/colombo/etc
+mkdir -p /u01/colombo/scripts
+mkdir -p /u01/colombo/var/log/mongodb
+mkdir -p /u01/colombo/var/run/mongodb
+
 # cau hinh node luu config data, 3 node configsvr
 # tao duong dan luu storage
 mkdir -p /u01/colombo/mongodb/wtconfig
