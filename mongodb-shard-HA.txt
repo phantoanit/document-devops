@@ -76,6 +76,8 @@ sharding:
 
 # khoi dong wtconfig 27019 tren cac node
 /u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/wtconfig.conf
+// CHU Y NEU TRONG CONFIG MONGO KHONG CO sharding: clusterRole: configsvr THI KHONG SU DUNG configsvr
+// CHU Y NEU THAY DOI CONFIG MONGO THI CAN RESTART CAC NODE TRUOC KHI INITIATE
 # dung cong cu mongosh de cau hinh
 /u01/colombo/mongodb/bin/mongosh --port 27019
 rs.initiate({
@@ -149,6 +151,8 @@ setParameter:
 
 #khoi dong shard 27018 tren cac node
 /u01/colombo/mongodb/bin/mongod -f /u01/colombo/etc/mongodb/shard-wt-1.conf
+// CHU Y NEU TRONG CONFIG MONGO KHONG CO sharding: clusterRole: configsvr THI KHONG SU DUNG configsvr
+// CHU Y NEU THAY DOI CONFIG MONGO THI CAN RESTART CAC NODE TRUOC KHI INITIATE
 # dung cong cu mongosh de cau hinh
 /u01/colombo/mongodb/bin/mongosh --port 27018
 rs.initiate({
@@ -320,6 +324,8 @@ security:
         keyFile: "/u01/colombo/mongodb1/mongodb-keyfile"
         transitionToAuth: true
 
+// CHU Y NEU TRONG CONFIG MONGO KHONG CO sharding: clusterRole: configsvr THI KHONG SU DUNG configsvr
+// CHU Y NEU THAY DOI CONFIG MONGO THI CAN RESTART CAC NODE TRUOC KHI INITIATE
 /u01/colombo/mongodb1/bin/mongosh --port 27119
 rs.initiate({
   _id: "core-config",
@@ -372,6 +378,8 @@ security:
 
 #khoi dong shard 27118 tren cac node
 /u01/colombo/mongodb1/bin/mongod -f /u01/colombo/etc/mongodb1/core-shard-1.conf
+// CHU Y NEU TRONG CONFIG MONGO KHONG CO sharding: clusterRole: configsvr THI KHONG SU DUNG configsvr
+// CHU Y NEU THAY DOI CONFIG MONGO THI CAN RESTART CAC NODE TRUOC KHI INITIATE
 # dung cong cu mongosh de cau hinh
 /u01/colombo/mongodb1/bin/mongosh --port 27118
 rs.initiate({
