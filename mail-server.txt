@@ -25,13 +25,13 @@ sudo systemctl daemon-reload
 df -h | grep maildata
 
 #Chặn Dovecot start khi Gluster chưa mount
-systemctl edit dovecot
+sudo systemctl edit dovecot
 #chu y chi sua va ghi o cac dong dau tien, neu ghi noi dung o duoi dong canh bao se khong duoc luu lai
 [Service]
 ExecStartPre=/bin/mountpoint -q /u01/colombo/maildata
 
 #Thêm check cho Postfix
-systemctl edit postfix
+sudo systemctl edit postfix
 [Service]
 ExecStartPre=/bin/mountpoint -q /u01/colombo/maildata
 
