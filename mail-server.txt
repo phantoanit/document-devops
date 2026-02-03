@@ -24,6 +24,17 @@ sudo systemctl daemon-reload
 #kiem tra
 df -h | grep maildata
 
+#Chặn Dovecot start khi Gluster chưa mount
+systemctl edit dovecot
+#chu y chi sua va ghi o cac dong dau tien, neu ghi noi dung o duoi dong canh bao se khong duoc luu lai
+[Service]
+ExecStartPre=/bin/mountpoint -q /u01/colombo/maildata
+
+#Thêm check cho Postfix
+systemctl edit postfix
+[Service]
+ExecStartPre=/bin/mountpoint -q /u01/colombo/maildata
+
 sudo apt install -y postfix mailutils postfix-mysql
 #test guil mail
 #/usr/sbin/sendmail phantoan.it@gmail.com
