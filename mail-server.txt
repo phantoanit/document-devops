@@ -18,7 +18,8 @@ sudo chown -R vmail:vmail /u01/colombo/maildata
 #cach mount truc tiep
 #sudo mount -t glusterfs localhost:/vol_mail_storage /u01/colombo/maildata -o backupvolfile-servers=mail2,_netdev
 #cach mount thêm vào /etc/fstab
-sudo echo "localhost:/vol_mail_storage /u01/colombo/maildata glusterfs _netdev,nofail,x-systemd.automount,backupvolfile-server=storage-master-1:storage-master-2:storage-master-3 0 0" | sudo tee -a /etc/fstab
+#chu y bo tuy chon nofail nhu ubuntu24 se loi, chi dinh storage-master-x da add host thay vi dia chi localhost:/vol_ vi neu glusterd restart volume chưa ready node chưa join cluster thi bi chuyen mountpoint local
+sudo echo "storage-master-x:/vol_mail_storage /u01/colombo/maildata glusterfs _netdev,nofail,x-systemd.automount,backupvolfile-server=storage-master-1:storage-master-2:storage-master-3 0 0" | sudo tee -a /etc/fstab
 sudo mount -a
 sudo systemctl daemon-reload
 #kiem tra
