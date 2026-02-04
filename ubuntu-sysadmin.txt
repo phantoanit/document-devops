@@ -1,0 +1,153 @@
+sudo timedatectl set-timezone Asia/Ho_Chi_Minh
+
+sudo hostnamectl set-hostname web01
+
+sudo apt install --download-only htop autoconf ... -o=dir::cache=/home/devops/offline-pkgs
+
+sudo dpkg -i *.deb /home/devops/offline-pkgs/archives/*.deb
+sudo apt -f install
+sudo apt install /u01/colombo/offline-pkgs/archives/*.deb
+#neu loi do truoc do cai qua dpkg do co the can chay lenh:
+sudo dpkg --configure -a
+
+### Cấu hình sysctl
+vi /etc/sysctl.conf
+#Tổng số file mà toàn hệ thống có thể mở cùng lúc. 5 triệu là con số rất lớn, thường dùng cho các server lớn.
+fs.file-max = 5000000
+#Tắt khả năng tạo file core dump cho các tiến trình SUID (để bảo mật).
+fs.suid_dumpable = 0
+
+#Tắt việc thu hồi bộ nhớ quyết liệt từ các zone khác nhau. Điều này tốt cho MongoDB vì giúp tránh trễ (latency).
+vm.zone_reclaim_mode = 0 
+#Quyết định mức độ ưu tiên dùng Swap. Với I/O chậm trên VMware thuong bo qua hoac con số này nên là 1 thay vì 10 để tránh treo đĩa.
+vm.swappiness = 10 
+#Kernel phải luôn giữ trống 2GB RAM, neu ram vm <= 2g, 3g thi bat buoc bo qua
+vm.min_free_kbytes = 2097152 
+#neu lam lab - test thi bo qua, Cho phép Kernel cấp phát RAM ảo vượt quá RAM thật hiện có. Khi kết hợp với MongoDB (thường yêu cầu nhiều RAM), nó dễ dẫn đến crash hệ thống khi RAM thật cạn kiệt.
+vm.overcommit_memory = 1
+#neu lam lab/test thi bo qua, Tăng giới hạn số lượng vùng nhớ mà một tiến trình có thể ánh xạ. MongoDB cần con số cao để quản lý các file dữ liệu.
+vm.max_map_count = 256000
+
+#Số lượng ID tiến trình (Process ID) tối đa.
+kernel.pid_max = 65536
+#Số lượng luồng tối đa. MongoDB 8 tạo nhiều luồng nên con số này giúp tránh lỗi "cannot create thread".
+kernel.threads-max = 513913
+
+###Quản lý kết nối và hiệu suất hệ thống
+#Tăng số lượng kết nối tối đa mà hệ thống có thể theo dõi đồng thời. Giá trị này giúp tránh lỗi "nf_conntrack: table full, dropping packet" khi lưu lượng truy cập cao.
+net.netfilter.nf_conntrack_max = 524288
+#Giới hạn số lượng kết nối tối đa đang chờ xử lý trong hàng đợi "listen". Tăng giá trị này giúp máy chủ xử lý nhiều yêu cầu kết nối đồng thời hơn.
+net.core.somaxconn = 65535
+#Mở rộng dải cổng cục bộ (ephemeral ports) để tạo kết nối đi, giúp hệ thống không bị cạn kiệt cổng khi có quá nhiều kết nối hoạt động.
+net.ipv4.ip_local_port_range = 2000 65000
+#Tăng kích thước tối đa của bộ đệm cho các tùy chọn socket (như thông tin gói bổ sung), giúp cải thiện hiệu suất khi xử lý nhiều kết nối băng thông cao
+net.core.optmem_max = 40960
+
+###Tối ưu hóa giao thức TCP
+#Giảm thời gian chờ một kết nối đã đóng hoàn toàn giải phóng tài nguyên từ 60 giây (mặc định) xuống 10 giây, giúp thu hồi tài nguyên nhanh hơn.
+net.ipv4.tcp_fin_timeout = 10
+#Tăng kích thước hàng đợi cho các kết nối đang trong quá trình bắt tay (SYN), giúp hệ thống chống lại các cuộc tấn công SYN flood hiệu quả hơn.
+net.ipv4.tcp_max_syn_backlog = 30000
+#Giảm thời gian kiểm tra xem kết nối TCP còn sống hay không xuống 300 giây (5 phút), giúp giải phóng các kết nối "chết" nhanh hơn.
+net.ipv4.tcp_keepalive_time=300
+#Tắt cơ chế "slow start" sau khi kết nối nhàn rỗi, giúp duy trì tốc độ truyền tải cao ngay cả sau một khoảng thời gian không có dữ liệu trao đổi.
+net.ipv4.tcp_slow_start_after_idle = 0
+#Cấu hình bộ đệm đọc/ghi TCP (giá trị tối thiểu, mặc định, và tối đa). Việc tăng giới hạn tối đa lên khoảng 54MB giúp tối ưu hóa truyền tải dữ liệu trên các đường truyền tốc độ cao
+net.ipv4.tcp_rmem = 4096 87380 56623104
+net.ipv4.tcp_wmem = 4096 87380 56623104
+
+###Bảo mật và Định tuyến
+net.ipv4.tcp_rfc1337 = 1
+#Ghi nhật ký các gói tin có địa chỉ nguồn không hợp lệ (không thể định tuyến), hỗ trợ phát hiện các hoạt động bất thường hoặc tấn công giả mạo.
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+#Tắt lọc đường dẫn ngược (Reverse Path Filtering). Thường dùng trong các môi trường định tuyến phức tạp hoặc bất đối xứng, mặc dù chế độ "strict" (giá trị 1) thường an toàn hơn để chống giả mạo IP.
+net.ipv4.conf.all.rp_filter = 0
+#Ngăn chặn hệ thống gửi gói tin ICMP Redirect, giúp tăng tính bảo mật cho hạ tầng mạng.
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+#Cho phép máy chủ chuyển tiếp các gói tin giữa các giao diện mạng, cần thiết nếu máy chủ đóng vai trò là Router, Gateway hoặc chạy Docker/Kubernetes.
+net.ipv4.ip_forward = 1
+#Vô hiệu hóa hoàn toàn giao thức IPv6 trên tất cả các giao diện mạng để giảm độ phức tạp hoặc khi hạ tầng chỉ sử dụng IPv4
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+
+#nap tu dong khi khoi dong may
+echo "nf_conntrack" | sudo tee -a /etc/modules
+#nap lan dau
+sudo modprobe nf_conntrack
+#ap dung toan bo
+sudo sysctl -p
+
+### Cấu hình security limit
+#cấu hình nhằm nới lỏng giới hạn tài nguyên của hệ điều hành, giúp hệ thống không bị treo hoặc từ chối dịch vụ khi xử lý lượng truy cập cực lớn.
+vi /etc/security/limits.conf
+#Giới hạn số lượng tệp mở
+#Giới hạn "mềm" cho số lượng file descriptor (tệp, socket mạng) mà một tiến trình có thể mở. Người dùng có thể tự tăng giá trị này lên tối đa bằng mức "hard".
+*               soft    nofile            990000
+#Giới hạn "cứng" (tối đa) do quản trị viên thiết lập. Không tiến trình nào được phép vượt quá con số này. Mục đích: Tránh lỗi "Too many open files" cho nginx hoac database
+*               hard    nofile            990000
+#Giới hạn số lượng tiến trình
+#Giới hạn tổng số tiến trình (hoặc luồng/threads) mà một người dùng có thể tạo ra , hoặc các ứng dụng bị lỗi tạo ra quá nhiều tiến trình làm cạn kiệt CPU/RAM.
+*               soft    nproc            990000
+*               hard    nproc            990000
+#Cấu hình riêng cho user
+#thiết lập giới hạn tiến trình riêng cho user colombo là 200.000 (thấp hơn mức chung 990k). Dấu - nghĩa là áp dụng cho cả soft và hard.
+devops    -    nproc   200000
+#Thiết lập giới hạn file mở cho user devops là 900.000.
+devops    -    nofile  900000
+#Giới hạn tệp Core Dump
+#Vô hiệu hóa việc tạo tệp core dump (tệp ghi lại trạng thái bộ nhớ khi ứng dụng bị sập).
+* hard core 0
+#*: Áp dụng cho tất cả người dùng trong hệ thống.
+#soft: Giới hạn cảnh báo, có thể thay đổi bởi user.
+#hard: Giới hạn tối đa nghiêm ngặt, chỉ có root mới tăng được.
+
+### Tạo tài khoản devops
+sudo useradd -m -s /bin/bash devops
+#doi mat khau neu can
+sudo passwd devops
+
+### crontab, cau hinh neu can, mac dinh ubuntu24 se khong can vi allow het
+vi /etc/crontab.allow // Thêm user colombo
+text
+root
+#Có thể chuyển sang user vừa được cấp quyền và thử lệnh:
+su - colombo
+crontab -e
+
+### Phân quyền ssh neu can, ubuntu24 mac dinh allow all
+vi /etc/ssh/sshd_config // Thêm user colombo
+AllowUsers toanpd@192.168.1.100 colombo root
+sudo service  ssh restart
+
+### Cấu hình rc.local service
+// Chạy tay trước
+Transparent Huge Pages là tính năng tự động quản lý các trang bộ nhớ lớn. Tuy nhiên, nó thường gây ra độ trễ (latency) lớn và làm giảm hiệu năng cho các hệ quản trị cơ sở dữ liệu như Redis, MongoDB, Oracle hay Harbor/Docker.
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+echo never > /sys/kernel/mm/transparent_hugepage/defrag
+#tat Transparent Huge Pages moi khi khoi dong lai, tao script
+mkdir /etc/rc.d && sudo vi /etc/rc.d/rc.local
+#!/bin/bash
+# call your scripts here
+# add your commands 
+
+touch /var/lock/subsys/local
+
+if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+   echo never > /sys/kernel/mm/transparent_hugepage/enabled
+fi
+if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+   echo never > /sys/kernel/mm/transparent_hugepage/defrag
+fi
+
+exit 0
+/// end file 
+# nap file script nhu mot service
+cd /etc && sudo ln -s rc.d/rc.local rc.local
+sudo chmod -v +x /etc/rc.d/rc.local
+sudo systemctl enable rc-local.service
+
+sudo systemctl start rc-local.service
+sudo systemctl status rc-local.service
+
