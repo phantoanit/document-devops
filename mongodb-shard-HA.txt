@@ -227,7 +227,7 @@ var collections = {
   "CoreDecl_vi": "type2",
   "CoreDecl_zh-CN": "type2"
 };
-use colombo10263
+use colombo10263;
 for(var c in collections){
             	var key = collections[c], index = {};
             	index[key] = 'hashed';
