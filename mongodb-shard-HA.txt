@@ -408,7 +408,7 @@ rs.initiate({
 
 #restore toan bo
 /u01/colombo/mongodb1/bin/mongorestore  --port 27117 --authenticationDatabase admin -u colombo -p P0rtalmongo#123DLVB --verbose --db colombo10263 /u01/colombo/backup/colombo10263 --gzip
-# restore theo chi dinh, restore lai index, vao router de thuc hien
+# restore voi cum shard phai theo chi dinh, restore lai index, vao router de thuc hien
 /u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p Mongodb#25CSBVT --db colombo10263 /u01/colombo/restore/colombo10263/index
 # Bật sharding cho database và collection
 #sh.enableSharding("mydb")
