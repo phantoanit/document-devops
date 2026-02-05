@@ -409,7 +409,7 @@ rs.initiate({
 #restore toan bo
 /u01/colombo/mongodb1/bin/mongorestore  --port 27117 --authenticationDatabase admin -u colombo -p P0rtalmongo#123DLVB --verbose --db colombo10263 /u01/colombo/backup/colombo10263 --gzip
 # restore voi cum shard phai theo chi dinh, restore lai index, vao router de thuc hien, chu y enableSharding db colombo10263 truoc
-/u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p Mongodb#25CSBVT --db colombo10263 /u01/colombo/restore/colombo10263/index
+/u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p Mongodb#25CSBVT --db colombo10263 /u01/colombo/restore/colombo10263/index --gzip
 # Bật sharding cho database và collection
 #sh.enableSharding("mydb")
 sh.enableSharding('colombo10263')
@@ -436,7 +436,7 @@ for(var c in collections){
             	sh.shardCollection('colombo10263.' + c, index) //sh.shardCollection('colombo10263.CoreDecl_vi', {type2: 'hashed'})
 }
 #restore data
-/u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p xxxx --db colombo10263 /u01/colombo/restore/colombo10263/data
+/u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p xxxx --db colombo10263 /u01/colombo/restore/colombo10263/data --gzip
 #khi can update collections, vao port router
 /u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p xxxx --db colombo10263 --collection Category /u01/colombo/restore/update/CoreDecl.bson.gz --gzip
 
