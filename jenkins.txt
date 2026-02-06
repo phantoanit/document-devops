@@ -2,7 +2,7 @@
 # apt update && sudo apt upgrade
 # add-apt-repository ppa:linuxuprising/java -y
 # apt update
-# apt install oracle-java17-installer oracle-java17-set-default
+# apt install -y oracle-java17-installer oracle-java17-set-default 
 # tren ubuntu 24.04 la apt install openjdk-17-jdk -y
 # java --version
 # wget -p -O - https://pkg.jenkins.io/debian/jenkins.io.key | apt-key add -
