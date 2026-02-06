@@ -91,6 +91,11 @@ sudo apt install -y build-essential autoconf pkg-config
 sudo apt install -y libc-client-dev libkrb5-dev libssl-dev libpng-dev libjpeg-dev libwebp-dev libfreetype6-dev libzip-dev libxml2-dev zlib1g-dev libxpm-dev libc6-dev libiconv-hook-dev libsqlite3-dev libmariadb-dev libldap2-dev libcurl4-openssl-dev libonig-dev libtidy-dev
 ./configure  --prefix=/u01/colombo/usr --enable-static --with-libxml --enable-xml --enable-fpm --disable-all --with-openssl --with-system-ciphers --with-fpm-user=nginx --with-fpm-group=nginx --with-config-file-path=/u01/colombo/etc/php-fpm.d --with-config-file-scan-dir=/u01/colombo/etc/php.d --with-curl --enable-intl --enable-mbstring --enable-opcache --enable-soap --enable-sockets --with-tidy --with-pear=shared --without-cdb --without-pdo-sqlite --enable-gd --enable-ctype --disable-fileinfo --enable-phar --enable-simplexml --enable-session --with-zlib --with-jpeg --with-xpm --with-freetype --with-webp --with-iconv --enable-dom --with-zip --enable-filter --enable-xmlwriter --with-imap --with-imap-ssl --with-kerberos --enable-pdo --with-pdo-mysql=mysqlnd --with-pdo-sqlite --with-mysqli --with-sqlite3 --enable-tokenizer --enable-fileinfo --enable-exif --with-ldap
 make -j$(nproc) && make install 
+
+#neu la ubuntu22 co the thu lai:
+#sudo apt install -y libcurl4-openssl-dev
+#./configure  --prefix=/u01/colombo/usr --enable-static --enable-libxml --enable-xml --enable-fpm --disable-all --with-openssl --with-libxml --with-system-ciphers --with-pcre-regex --with-fpm-user=nginx --with-fpm-group=nginx --with-config-file-path=/u01/colombo/etc/php-fpm.d --with-config-file-scan-dir=/u01/colombo/etc/php.d --with-curl --disable-mysqlnd --enable-intl --enable-mbstring --with-mcrypt --enable-opcache --disable-pdo --enable-soap --enable-sockets --with-tidy --with-pear=shared --without-cdb --without-pdo-sqlite --with-gd --enable-gd-native-ttf --enable-ctype --disable-fileinfo --enable-json --enable-phar --enable-simplexml --enable-session --with-zlib --with-jpeg-dir=/usr --with-png-dir=/usr --with-xpm-dir=/usr --with-freetype-dir=/usr --with-webp-dir=/usr --with-zlib-dir=/usr --enable-hash --with-iconv-dir=/usr --with-iconv --enable-dom --enable-zip --enable-filter --enable-xmlwriter --enable-tokenizer 
+
 # cau hinh php.ini
 * php.ini options:
    - error_reporting E_ALL & ~E_NOTICE & ~E_STRICT
