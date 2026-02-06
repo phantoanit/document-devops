@@ -36,7 +36,9 @@ Restart=always
 WantedBy=multi-user.target
 
 /etc/systemd/system/jenkins-agent.service
-
+sudo systemctl daemon-reload
+systemctl start jenkins-agent
+systemctl status jenkins-agent
 
 # tren server jenkins ban cu can mo port tcp de jenkins agent ket noi
 
