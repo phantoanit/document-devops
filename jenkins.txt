@@ -17,7 +17,7 @@
 adduser jenkins
 mkdir /var/lib/jenkins
 chown -R jenkins. /var/lib/jenkins
-# su dung user jenkins de ket noi jenkins agent, Chu y ket noi cau hinh tu web ui jenkins -> manage jenkins -> node -> new node, chi chan chu y muc Number of executors, vao chi tiet node de lay lenh ket noi o muc su dung secret stored in a file
+# Chu y ket noi cau hinh tu web ui jenkins -> manage jenkins -> node -> new node, chi chan chu y muc Number of executors, vao chi tiet node de lay lenh ket noi o muc su dung secret stored in a file, tren agent su dung user jenkins su - jenkins de ket noi jenkins agent
 # chay jenkins agent voi system service file
 
 # tao service File /etc/systemd/system/jenkins-agent.service
