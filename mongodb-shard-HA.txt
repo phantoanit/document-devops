@@ -349,7 +349,7 @@ storage:
         engine: inMemory
         inMemory:
             engineConfig:
-                inMemorySizeGB: 4
+                inMemorySizeGB: 4 # Mặc định là 50% RAM trừ đi 1GB
 systemLog:
         destination: file
         path: "/u01/colombo/var/log/mongodb1/core-shard-1.log"
