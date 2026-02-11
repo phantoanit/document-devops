@@ -1,0 +1,225 @@
+Distributed mode / phan tan luu tru / 4 node (tối thiểu production)
+
+Erasure Coding (EC)
+Ví dụ cluster bạn: 4 node × 4 disk = 16 disk
+MinIO sẽ: Chia object thành:
+8 data blocks
+8 parity blocks
+
+Ghi lên 16 disk
+👉 Bạn có thể mất:
+1 node
+hoặc nhiều disk
+mà dữ liệu vẫn đọc được
+
+Thành phần	Khuyến nghị
+CPU	≥ 8 core (physical)
+RAM	≥ 32 GB
+Disk	4–8 SSD/NVMe giống nhau
+Network	Dual NIC nếu có
+OS Ubuntu 22.04 / RHEL 8+
+
+Port	Mục đích
+9000	S3 API
+9001	Console
+
+sudo timedatectl set-timezone Asia/Ho_Chi_Minh
+
+#Tắt những thứ gây ảnh hưởng I/O, bo qua neu la ubuntu24
+#systemctl stop firewalld
+#systemctl disable firewalld
+
+swapoff -a
+sed -i '/swap/d' /etc/fstab
+
+#Tune kernel (khuyến nghị)
+cat <<EOF >> /etc/sysctl.conf
+fs.file-max=2097152
+net.core.somaxconn=65535
+vm.swappiness=1
+EOF
+
+sysctl -p
+
+#node có 4 disk
+/dev/nvme1n1
+/dev/nvme2n1
+/dev/nvme3n1
+/dev/nvme4n1
+
+#Format XFS (khuyến nghị), khong dung LVM disk do khong duoc ho tro o day
+mkfs.xfs /dev/nvme1n1
+mkfs.xfs /dev/nvme2n1
+mkfs.xfs /dev/nvme3n1
+mkfs.xfs /dev/nvme4n1
+
+#Mount cố định
+mkdir -p /data/disk{1..4}
+
+mount /dev/nvme1n1 /data/disk1
+mount /dev/nvme2n1 /data/disk2
+mount /dev/nvme3n1 /data/disk3
+mount /dev/nvme4n1 /data/disk4
+
+#Thêm /etc/fstab:
+/dev/sdc /data/disk1 xfs defaults,noatime 0 0
+/dev/sdd /data/disk2 xfs defaults,noatime 0 0
+/dev/sde /data/disk3 xfs defaults,noatime 0 0
+/dev/sdf /data/disk4 xfs defaults,noatime 0 0
+
+#### Cài đặt MinIO
+
+#Tạo user riêng
+useradd -r minio -s /sbin/nologin
+chown -R minio:minio /data
+#Cài binary
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+chmod +x minio
+mv /home/devops/minio /usr/local/bin/
+
+#Cấu hình Distributed MinIO
+sudo vi /etc/hosts
+10.10.10.30 minio1
+10.10.10.31 minio2
+10.10.10.32 minio3
+10.10.10.33 minio4
+
+hostnamectl set-hostname minio1
+
+vi /etc/minio/minio.env
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=StrongPasswordHere
+
+MINIO_VOLUMES="http://minio{1...4}/data/disk{1...4}"
+MINIO_OPTS="--console-address :9001"
+
+#Systemd service
+vi /etc/systemd/system/minio.service
+[Unit]
+Description=MinIO On-Prem
+After=network-online.target
+
+[Service]
+User=minio
+Group=minio
+EnvironmentFile=/etc/minio/minio.env
+ExecStart=/usr/local/bin/minio server $MINIO_VOLUMES $MINIO_OPTS
+Restart=always
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+
+systemctl daemon-reload
+systemctl enable minio
+systemctl start minio
+
+#TLS (BẮT BUỘC)
+#Restart MinIO sau khi add cert.
+/etc/minio/certs/public.crt
+/etc/minio/certs/private.key
+
+# cài MinIO Client, Cài mc chỉ trên 1 node admin, Không cần cài trên tất cả MinIO node, Version mc nên match gần với MinIO server version
+wget https://dl.min.io/client/mc/release/linux-amd64/mc
+chmod +x mc
+mv mc /usr/local/bin/
+mc --version
+
+#Kiểm tra cluster
+mc alias set onprem https://minio.example.com minioadmin StrongPasswordHere
+mc alias set onprem https://minio1:9000 minioadmin 
+mc alias set onprem http://minio1:9000 minioadmin StrongPasswordHere
+
+mc admin info onprem
+#kiem tra disk
+mc admin heal -r onprem
+
+#IAM & phân quyền
+mc admin user add onprem app-user StrongPass
+mc admin policy attach onprem readwrite --user app-user
+
+#Monitoring & Alert
+Prometheus: :9000/minio/v2/metrics/cluster
+Grafana: dashboard official MinIO
+
+#Tạo bucket lưu dữ liệu:
+mc mb onprem/app-data
+mc ls onprem
+
+#Tạo user riêng cho application (QUAN TRỌNG) Không dùng root cho app.
+mc admin user add onprem appuser appuser123
+#Gán policy read/write
+#Cho full quyền bucket:
+mc admin policy attach onprem readwrite --user appuser
+
+#Bật versioning (nên bật cho production)
+mc version enable onprem/app-data
+
+#Upload file:
+mc cp /etc/hosts onprem/app-data/
+mc ls onprem/app-data
+#Download:
+mc cp onprem/app-data/hosts .
+
+########
+Thực tế production hay gặp
+Dev xoá nhầm user root
+Operator reset cluster
+Cài lại OS
+Chuyển server
+Ransomware
+
+Nếu không backup config → phải cấu hình lại bằng tay.
+
+#Xuất toàn bộ IAM:
+#mc admin cluster iam export onprem > iam-backup.json
+#version moi dung file zip
+mc admin cluster iam export onprem --output iam-backup-$(date +%F).zip
+#nen backup ca config
+mc admin config export onprem > config-$(date +%F).json
+
+#Restore:
+mc admin cluster iam import onprem < iam-backup.json
+mc admin config import onprem < config-2026-02-11.json
+mc admin cluster iam import onprem iam-backup.zip
+
+
+#Tạo loadbalancer cho minio
+upstream minio_api {
+    least_conn;
+    server 10.60.10.30:9000 max_fails=3 fail_timeout=10s;
+    server 10.60.10.31:9000 max_fails=3 fail_timeout=10s;
+    server 10.60.10.32:9000  max_fails=3 fail_timeout=10s;
+    server 10.60.10.33:9000 max_fails=3 fail_timeout=10s;
+}
+
+server {
+
+    listen 443 ssl;
+    server_name minio.abc.vn; 
+    ssl_certificate /etc/letsencrypt/live/wildcard.abc.vn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/wildcard.abc.vn/privkey.pem;
+    # --- Cấu hình tối ưu cho Upload/Download ---
+    ignore_invalid_headers off;
+    client_max_body_size 0;
+    proxy_buffering off;
+    proxy_request_buffering off;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location / {
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        chunked_transfer_encoding on;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+        proxy_read_timeout 300;
+        proxy_pass http://minio_api;
+    }
+}
+
+
