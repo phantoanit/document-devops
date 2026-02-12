@@ -84,7 +84,7 @@ Thêm ổ mới + add pv → add vào VG(Volume Group) → extend LV root → re
 ### CASE Standard Partitioning - Physical Partitioning - Legacy Partitioning
 Thêm ổ mới → partition(fdisk, gdisk) -> Format filesystem -> Mount
 
-#cong cu dinh dang
+###cong cu dinh dang neu khong add LVM
 fdisk truyền thống làm việc với partition table MBR, chỉ hỗ trợ MBR, Disk < 2TB
 cfdisk, Disk < 2TB
 gdisk (GPT fdisk), Disk > 2TB
