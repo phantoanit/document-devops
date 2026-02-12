@@ -263,3 +263,17 @@ kubectl get endpoints echo
 - tim kiem text trong thu muc: grep -R --include="*.yaml" "cpu: " production-bk/
 - tim kiem text va replate: find . -type f -name "*.yaml" -exec sed -i 's#cpu: 1.5#cpu: 1#g' {} +
 - tim kiem file trong thu muc va thu muc con: find . -type f -name "*.txt"
+- neu pod xoa bi ket: kubectl delete pod --all -n yugabyte --force --grace-period=0
+- neu namepsace bi ket: kubectl delete ns yugabyte --force --grace-period=0
+Xóa finalizer của namespace (nếu bị treo)
+Kiểm tra:
+kubectl get ns yugabyte -o yaml
+Nếu thấy:
+finalizers:
+  - kubernetes
+Thì patch:
+kubectl patch namespace yugabyte \
+  -p '{"metadata":{"finalizers":[]}}' \
+  --type=merge
+
+Namespace sẽ biến mất ngay.
