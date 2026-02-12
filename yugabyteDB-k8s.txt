@@ -1,0 +1,347 @@
+YugabyteDB là gì?
+YugabyteDB là một distributed SQL database (NewSQL) mã nguồn mở, thiết kế để kết hợp:
+✅ Khả năng mở rộng ngang (scale-out) như NoSQL
+✅ Tính nhất quán mạnh (ACID, distributed transactions)
+✅ Tương thích PostgreSQL
+Co the noi la su ket hop gia sql va nosql
+
+TRIỂN KHAI YUGABYTEDB PRODUCTION TRÊN KUBERNETES
+SỬ DỤNG OpenEBS LocalPV
+
+1. Kiến trúc tổng thể
+
+Mục tiêu
+Replication Factor (RF) = 3
+
+3 Master
+YB-Master chịu trách nhiệm:
+Quản lý metadata (schema, table, namespace)
+Quản lý tablet placement
+Leader election
+Cluster configuration
+Load balancing
+cần ổn định, nhưng không cần disk quá mạnh.
+
+≥ 3 TServer
+Lưu trữ dữ liệu thực tế
+Ghi WAL
+Xử lý read/write
+Thực hiện Raft replication
+Thực hiện transaction
+TServer là nơi:
+90% workload diễn ra
+
+Đặc điểm IO
+Ghi WAL liên tục
+Sync disk thường xuyên
+Nhạy cảm với latency
+Cần IOPS cao
+
+Master và TServer nên đặt thế nào?
+Best practice:
+3 Master (trên 3 worker khác nhau)
+≥ 3 TServer (trên 3 worker khác nhau)
+Không đặt:
+    Master + TServer cùng node nếu có đủ node
+    Tất cả TServer trên 1 node
+
+Storage: OpenEBS LocalPV (block device)
+Không dùng NFS
+Không dùng RWX
+Mỗi Pod có 1 PVC riêng (RWO)
+
+Nguyên tắc quan trọng
+YugabyteDB đã replicate dữ liệu → không cần storage replication
+Ưu tiên latency thấp hơn redundancy storage
+Mỗi node phải có SSD/NVMe riêng
+Không dùng shared filesystem
+
+2. Chuẩn bị hạ tầng
+
+2.1 Yêu cầu tối thiểu mỗi node
+Production khuyến nghị:
+CPU: 8 vCPU trở lên
+RAM: 32GB (tối thiểu 16GB)
+Disk: SSD/NVMe riêng
+
+Tắt swap:
+sudo swapoff -a
+
+Kiểm tra:
+free -h
+
+2.2 Chuẩn bị disk cho LocalPV
+
+Giả sử mỗi node có disk riêng, co the su dung LVM de mo rong nhung tot nhat la khong nen co them layer lam cho overhead, nen scale them node tot hon
+OpenEBS LocalPV se quyet dinh benh trong disk, tao volume cho cac pod, Mỗi PVC sẽ được tạo thành một thư mục con bên trong YB-Master hoặc YB-TServer
+/dev/nvme1n1
+
+Format
+sudo mkfs.ext4 /dev/nvme1n1
+
+Mount:
+sudo mkdir -p /var/openebs
+sudo mount /dev/nvme1n1 /var/openebs
+
+
+Thêm vào /etc/fstab:
+/dev/nvme1n1  /var/openebs  ext4  defaults,noatime  0  2
+
+3. Cài đặt OpenEBS
+
+3.1 Thêm Helm repo
+helm repo add openebs https://openebs.github.io/charts
+helm repo update
+
+3.2 Cài OpenEBS (chỉ LocalPV)
+helm install openebs openebs/openebs --namespace openebs --create-namespace
+
+Kiểm tra:
+kubectl get pods -n openebs
+
+4. Tạo StorageClass LocalPV
+
+vi localpv-sc.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass #StorageClass định nghĩa cách Kubernetes cấp phát PersistentVolume (PV)
+metadata:
+  name: openebs-localpv
+provisioner: openebs.io/local
+volumeBindingMode: WaitForFirstConsumer #PVC được tạo, Chưa tạo PV ngay, Đợi Pod được scheduler chọn node Sau đó PV được tạo trên đúng node đó, Không bị mismatch node
+reclaimPolicy: Retain #Khi PVC bị xóa, PV sẽ: Không bị xóa/format
+parameters:
+  storageType: "hostpath" #là một thư mục trên node Không phải block raw device, Dữ liệu lưu dưới dạng filesystem
+  basePath: "/var/openebs"
+
+Apply:
+kubectl apply -f localpv-sc.yaml
+
+Kiểm tra:
+kubectl get storageclass
+
+5. Label node theo zone (bắt buộc cho HA)
+Ví dụ:
+kubectl label nodes node1 topology.kubernetes.io/zone=zone-a
+kubectl label nodes node2 topology.kubernetes.io/zone=zone-b
+kubectl label nodes node3 topology.kubernetes.io/zone=zone-c
+
+# chinh sua gioi han ulimit neu can ch porduction
+vi /etc/security/limits.conf
+Thêm:
+* soft nofile 1048576
+* hard nofile 1048576
+/etc/systemd/system.conf
+/etc/systemd/user.conf
+Thêm:
+DefaultLimitNOFILE=1048576
+
+systemctl daemon-reexec
+systemctl restart containerd
+
+Cấu hình ulimit cho containerd và kubelet:
+sudo mkdir -p /etc/systemd/system/containerd.service.d
+sudo vi /etc/systemd/system/containerd.service.d/override.conf
+[Service]
+LimitNOFILE=1048576
+LimitNOFILESoft=1048576
+
+sudo mkdir -p /etc/systemd/system/kubelet.service.d
+sudo vi /etc/systemd/system/kubelet.service.d/override.conf
+[Service]
+LimitNOFILE=1048576
+LimitNOFILESoft=1048576
+
+sudo systemctl daemon-reexec
+sudo systemctl restart containerd
+sudo systemctl restart kubelet
+
+Kiểm tra:
+kubectl get nodes --show-labels
+
+6. Tạo Namespace Yugabyte
+kubectl create namespace yugabyte
+
+7. Tạo file values-production.yaml
+vi values-production.yaml
+
+replicas:
+  master: 3
+  tserver: 3
+
+preflight:
+  skipUlimit: true #neu lab thi bat de yugabyte bo qua
+
+storage:
+  master:
+    size: 0.5Gi #50Gi
+    storageClass: openebs-localpv
+  tserver:
+    size: 1Gi #200Gi
+    storageClass: openebs-localpv
+
+resource:
+  master:
+    requests:
+      cpu: "1" #2
+      memory: "1Gi" #4
+    limits:
+      cpu: "1" #4
+      memory: "1Gi" #8
+
+  tserver:
+    requests:
+      cpu: "1" #4
+      memory: "1Gi" #8
+    limits:
+      cpu: "1" #8
+      memory: "1Gi" #16
+
+podDisruptionBudget: #PDB bảo vệ Pod khi xảy ra: Drain node, Rolling upgrade, Cluster autoscaler.. 
+  master:
+    maxUnavailable: 1 #Tối đa chỉ được 1 master down cùng lúc
+  tserver:
+    maxUnavailable: 1 #Chỉ được down 1 tại một thời điểm, Tránh mất majority replica
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution: #Không được đặt 2 pod yb-tserver trên cùng một node vật lý
+      - labelSelector:
+          matchExpressions:
+            - key: app
+              operator: In
+              values:
+                - yb-tserver
+        topologyKey: "kubernetes.io/hostname"
+
+8. Cài YugabyteDB bằng Helm
+helm repo add yugabytedb https://charts.yugabyte.com
+helm repo update
+
+Deploy:
+helm install yb yugabytedb/yugabyte -n yugabyte -f values-production.yaml
+
+9. Kiểm tra trạng thái
+kubectl get pods -n yugabyte
+Phải có:
+yb-master-0
+yb-master-1
+yb-master-2
+yb-tserver-0
+yb-tserver-1
+yb-tserver-2
+
+Kiểm tra PVC:
+kubectl get pvc -n yugabyte
+
+Kiểm tra PV mapping:
+kubectl get pv
+
+10. Kiểm tra Web UI
+kubectl port-forward svc/yb-master-ui 7000:7000 -n yugabyte
+
+Truy cập: http://localhost:7000
+Kiểm tra ui:
+Leader master
+Replication factor = 3
+Tablet distribution đều
+
+11. Kiểm tra kết nối YSQL
+kubectl port-forward svc/yb-tserver-service 5433:5433 -n yugabyte
+
+Kết nối:
+ysqlsh -h localhost -p 5433 -U yugabyte
+
+12. Kiểm tra HA
+Test node failure:
+kubectl delete pod yb-tserver-0 -n yugabyte
+
+
+Kiểm tra:
+Pod được recreate
+Cluster vẫn healthy
+Không mất leader toàn cluster
+
+#Get YugabyteDB Pods by running this command:
+  kubectl --namespace yugabyte get pods
+# Get list of YugabyteDB services that are running:
+  kubectl --namespace yugabyte get services
+# Get information about the load balancer services:
+  kubectl get svc --namespace yugabyte
+# Connect to one of the tablet server:
+  kubectl exec --namespace yugabyte -it yb-tserver-0 bash
+# Run YSQL shell from inside of a tablet server:
+  kubectl exec --namespace yugabyte -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yugabyte
+# Cleanup YugabyteDB Pods
+  For helm 2:
+  helm delete yb --purge
+  For helm 3:
+  helm delete yb -n yugabyte
+  NOTE: You need to manually delete the persistent volume
+  kubectl delete pvc --namespace yugabyte -l app=yb-master
+  kubectl delete pvc --namespace yugabyte -l app=yb-tserver
+
+#co the  upgrade chart voi cau hinh forward port trong file values-production.yaml
+serviceEndpoints:
+  - name: ysql
+    type: ClusterIP
+    scope: internal
+    ports:
+      - name: ysql
+        port: 5433
+
+  - name: master-ui
+    type: ClusterIP
+    scope: internal
+    ports:
+      - name: http
+        port: 7000
+
+##Cấu hình user và password cho connect
+# excute vào pod
+kubectl -n yugabyte exec -it yb-tserver-0 -- bash
+# Truy cập vào yugabyte
+ysqlsh -U yugabyte
+yugabyte=# CREATE DATABASE <database-name>;
+yugabyte=# CREATE ROLE <user-name> WITH PASSWORD '<user-passwd>' LOGIN;
+# Output: CREATE ROLE
+yugabyte=# GRANT ALL PRIVILEGES ON DATABASE <database-name> TO <user-name>;
+# Output: GRANT
+
+13. Lưu ý production quan trọng
+Không bao giờ:
+Dùng NFS
+Dùng RWX
+Dùng shared volume
+Đặt nhiều pod DB trên cùng node
+
+Phải có:
+
+Monitoring Prometheus
+Alert disk usage
+Backup định kỳ
+Test restore định kỳ
+
+14. Backup khuyến nghị
+
+Sử dụng:
+- yb_backup.py
+- Hoặc YugabyteDB Anywhere
+- Backup ra S3 / Object Storage
+- tren k8s co the dung cronjob voi kind: CronJob
+
+15. Kiến trúc Production khuyến nghị mở rộng
+
+Nếu workload lớn:
+3 master
+5–9 tserver
+NVMe riêng cho mỗi node
+10G network
+
+KẾT LUẬN
+
+OpenEBS LocalPV + YugabyteDB là kiến trúc:
+Latency thấp
+IO ổn định
+Không phụ thuộc NFS
+Phù hợp production nếu node ổn định
+
