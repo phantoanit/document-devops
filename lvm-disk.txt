@@ -55,12 +55,11 @@ LV: Dùng để chia nhỏ không gian cho từng ứng dụng (Nên có nhiều
 VG: Dùng để gộp tài nguyên ổ cứng vật lý (Thường chỉ cần 1 hoặc 2(1 ssd 1 hdd)).
 
 
-#Để cấu hình LVM, bạn thường thực hiện qua các bước sau trên Terminal:
+###Để cấu hình LVM, bạn thường thực hiện qua các bước sau trên Terminal:
 Khởi tạo PV: pvcreate /dev/sdb (Biến ổ đĩa sdb thành Physical Volume).
 Tạo VG: vgcreate my_group /dev/sdb (Tạo nhóm tên "my_group").
 Tạo LV: lvcreate -L 10G -n my_data my_group (Tạo phân vùng ảo 10GB tên "my_data").
 Định dạng và sử dụng: mkfs.ext4 /dev/my_group/my_data sau đó mount vào thư mục cần dùng.
-
 
 #nap lai o khi them ma khong xuat hien o
 echo "- - -" | sudo tee /sys/class/scsi_host/host*/scan
@@ -80,9 +79,9 @@ Phân vùng đã được mã hóa (thường sử dụng LUKS để bảo mật
 #raid: 
 Thiết bị thuộc một mảng RAID (kết hợp nhiều ổ đĩa để tăng tốc độ hoặc dự phòng dữ liệu).
 
-# use case Logical Volume: "ổ đĩa ảo"
-Thêm ổ mới → add vào VG(Volume Group) → extend LV root → resize filesystem (online)
-# case Standard Partitioning - Physical Partitioning - Legacy Partitioning
+### CASE Logical Volume: "ổ đĩa ảo", cach lam tung phan nho se huong dan o ben duoi sau
+Thêm ổ mới + add pv → add vào VG(Volume Group) → extend LV root → resize filesystem (online)
+### CASE Standard Partitioning - Physical Partitioning - Legacy Partitioning
 Thêm ổ mới → partition(fdisk, gdisk) -> Format filesystem -> Mount
 
 #cong cu dinh dang
