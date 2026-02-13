@@ -265,6 +265,7 @@ kubectl get endpoints echo
 - tim kiem file trong thu muc va thu muc con: find . -type f -name "*.txt"
 - neu pod xoa bi ket: kubectl delete pod --all -n yugabyte --force --grace-period=0
 - neu namepsace bi ket: kubectl delete ns yugabyte --force --grace-period=0
+- neu bi ket o pv: kubectl get pv | grep yugabyte | awk '{print $1}' | xargs kubectl delete pv
 Xóa finalizer của namespace (nếu bị treo)
 Kiểm tra:
 kubectl get ns yugabyte -o yaml
