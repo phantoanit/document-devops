@@ -296,6 +296,19 @@ serviceEndpoints:
       - name: http
         port: 7000
 
+#co the upgrade chart voi cau hinh auth trong file values-production.yaml
+Tạo Secret YSQL truoc:
+kubectl create secret generic yb-ysql-secret \
+  -n yugabyte \
+  --from-literal=ysql-password='yugabyteDB@2627'
+vi values-production.yaml
+ysql:
+  enabled: true
+  auth:
+    enabled: true
+    existingSecret: yb-ysql-secret
+    passwordKey: ysql-password
+
 ##Cấu hình user và password cho connect
 # excute vào pod
 kubectl -n yugabyte exec -it yb-tserver-0 -- bash
