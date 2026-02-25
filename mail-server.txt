@@ -28,8 +28,19 @@ df -h | grep maildata
 #Chặn Dovecot start khi Gluster chưa mount
 sudo systemctl edit dovecot
 #chu y chi sua va ghi o cac dong dau tien, neu ghi noi dung o duoi dong canh bao se khong duoc luu lai
+[Unit]
+# Buoc Dovecot phai cho va phu thuoc vào mount GlusterFS
+Requires=u01-colombo-maildata.mount
+After=u01-colombo-maildata.mount network-online.target
+Wants=network-online.target
+
 [Service]
+ExecStartPre=/bin/sleep 5
 ExecStartPre=/bin/mountpoint -q /u01/colombo/maildata
+
+# neu boot GlusterFS cham qua 5s thi start loi nen se phai khoi dong lai de check tiep
+Restart=on-failure
+RestartSec=10
 
 #Thêm check cho Postfix
 sudo systemctl edit postfix
