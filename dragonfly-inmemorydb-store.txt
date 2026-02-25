@@ -1,0 +1,272 @@
+Dragonfly (DragonflyDB) là một in-memory data store tương thích giao thức Redis và Memcached, được thiết kế để đạt hiệu năng rất cao trên phần cứng hiện đại (đa core), đồng thời tối ưu bộ nhớ tốt hơn Redis trong nhiều trường hợp.
+Nói ngắn gọn: Dragonfly = “Redis-compatible nhưng scale tốt hơn trên nhiều CPU core và tiết kiệm RAM hơn”.
+
+1. Mục tiêu kiến trúc
+Triển khai DragonflyDB trên Kubernetes với:
+- Stateful workload
+- Persistent storage sử dụng Longhorn
+- High Availability ở mức storage (replica volume)
+
+Có bảo mật (password)
+Có resource control
+Có monitoring endpoint
+Có khả năng backup
+
+Dragonfly không cluster-native
+Không replication
+Không đồng bộ dữ liệu
+Tăng replicas sẽ gây inconsistency
+
+2. Kiến trúc tổng thể
+Client
+   ↓
+ClusterIP Service
+   ↓
+StatefulSet (Dragonfly)
+   ↓
+PVC
+   ↓
+Longhorn Volume (replica 3 nodes)
+
+
+Dragonfly:
+Lưu dữ liệu active trong RAM
+Snapshot xuống disk (/data)
+Longhorn replicate block storage giữa các node
+
+3. Yêu cầu trước khi triển khai
+3.1 Kubernetes
+Kubernetes >= 1.24
+Tắt swap trên node
+Node có RAM đủ lớn (khuyến nghị >= 32GB nếu cache lớn)
+
+3.2 Longhorn đã cài đặt
+Kiểm tra:
+kubectl get pods -n longhorn-system
+
+Kiểm tra StorageClass:
+kubectl get storageclass
+
+Thông thường sẽ thấy:
+longhorn (default)
+
+4. Tạo StorageClass riêng cho Dragonfly
+Không nên dùng default chung cho toàn cluster.
+
+4.1 Tạo file: storageclass-dragonfly.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-fast-ssd
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  numberOfReplicas: "3"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"
+
+
+Giải thích:
+numberOfReplicas=3 → HA storage
+reclaimPolicy=Retain → không mất data nếu PVC bị xóa
+WaitForFirstConsumer → tránh volume sai node
+
+Apply: kubectl apply -f storageclass-dragonfly.yaml
+
+Kiểm tra: kubectl get sc
+
+5. Tạo Namespace
+kubectl create namespace dragonfly
+
+6. Tạo Secret (Password)
+kubectl -n dragonfly create secret generic dragonfly-secret \
+  --from-literal=requirepass='StrongPasswordHere'
+
+7. Tạo StatefulSet
+7.1 File: dragonfly-statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dragonfly
+  namespace: dragonfly
+spec:
+  serviceName: dragonfly
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dragonfly
+  template:
+    metadata:
+      labels:
+        app: dragonfly
+    spec:
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - dragonfly
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: dragonfly
+          image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+          args:
+            - "--requirepass=$(REQUIREPASS)"
+            - "--dir=/data"
+            - "--maxmemory=1gb"
+            - "--logtostderr"
+            #- "--metrics_port=9999" ban moi image khong dung flag nay ma su dung chạy chung port http://<pod-ip>:6379/metric
+          env:
+            - name: REQUIREPASS
+              valueFrom:
+                secretKeyRef:
+                  name: dragonfly-secret
+                  key: requirepass
+          ports:
+            - containerPort: 6379
+            - containerPort: 9999
+          resources:
+            requests:
+              memory: "0.5Gi" #16;
+              cpu: "0.5" #4
+            limits:
+              memory: "1Gi" #28
+              cpu: "1" #8
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 10
+            periodSeconds: 5
+  volumeClaimTemplates: # Tạo PVC cho Pod o day, khong tạo PVC trước vi Tất cả replica sẽ de dùng chung 1 volume, Không đúng thiết kế Stateful workload, Stateful DB = mỗi pod một volume.
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: longhorn-dragonfly-fast-ssd
+        resources:
+          requests:
+            storage: 0.25Gi
+
+
+#Apply:
+kubectl apply -f dragonfly-statefulset.yaml
+
+8. Tạo Service nội bộ
+8.1 File: dragonfly-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dragonfly
+  namespace: dragonfly
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+    - name: metrics
+      port: 9999
+      targetPort: 9999
+  selector:
+    app: dragonfly
+
+Apply: kubectl apply -f dragonfly-service.yaml
+
+9. PodDisruptionBudget, Giới hạn số Pod của một ứng dụng được phép bị “gián đoạn tự nguyện” cùng lúc, khong drain, khong evict pod, neu scale lên 2 hoặc 3 replica thi la bat buoc co PDB
+9.1 File: dragonfly-pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dragonfly-pdb
+  namespace: dragonfly
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: dragonfly
+
+Apply: kubectl apply -f dragonfly-pdb.yaml
+
+10. Kiểm tra triển khai
+kubectl get pods -n dragonfly
+kubectl get pvc -n dragonfly
+kubectl get pv
+
+
+Kiểm tra Longhorn UI:
+Volume có replica 3
+Volume state: Healthy
+
+11. Monitoring với Prometheus
+Dragonfly expose metrics tại:
+
+http://dragonfly.dragonfly.svc.cluster.local:9999
+Cấu hình Prometheus:
+
+- job_name: 'dragonfly'
+  static_configs:
+    - targets:
+        - dragonfly.dragonfly.svc.cluster.local:9999
+
+12. Backup Strategy
+Longhorn hỗ trợ:
+Snapshot
+Recurring job
+Backup ra S3/NFS
+
+Cấu hình trong Longhorn UI:
+Tạo Recurring Snapshot
+Tạo Recurring Backup
+Kiểm tra restore test định kỳ
+
+13. Rolling Update Strategy
+Khi upgrade image:
+kubectl set image statefulset/dragonfly \
+  dragonfly=docker.dragonflydb.io/dragonflydb/dragonfly:<version> \
+  -n dragonfly
+
+
+Lưu ý:
+Vì replicas=1 → có downtime ngắn
+Nếu muốn zero downtime → cần nhiều instance và sharding ở layer app
+
+14. Best Practices Production
+Không đặt maxmemory = memory limit
+Luôn chừa 20% headroom
+Không chạy Dragonfly cùng node với workload nặng khác
+Bật recurring backup Longhorn
+Test restore định kỳ
+Không dùng RWX volume
+Luôn dùng Retain reclaimPolicy
+
+15. Sizing tham khảo
+RAM Node	maxmemory	PVC
+32GB	20–24GB	100GB
+64GB	45–50GB	200GB
+16. Kết luận
+
+Kết hợp DragonflyDB + Longhorn mang lại:
+Tốc độ xử lý in-memory
+HA storage nhờ replica
+Khả năng backup/snapshot
+Khôi phục khi pod restart
+
+Lưu ý quan trọng:
+Dragonfly không phải cluster-native HA như Redis Cluster.
+Nếu cần HA thực sự ở layer application → cần triển khai nhiều instance và sharding ở application layer.
