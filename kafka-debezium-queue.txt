@@ -1,0 +1,291 @@
+Chúng ta dùng:
+- Apache Kafka
+- Strimzi
+- Chế độ KRaft (không ZooKeeper)
+- Storage LocalPV/OpenEBS (phù hợp với Kafka)
+
+Namespace: kafka
+Kafka Cluster (KRaft):
+- 3 Controller nodes
+- 3 Broker nodes
+- Persistent Volume
+- Replication factor = 3
+- min.insync.replicas = 2
+
+Kafka Connect (Debezium) – deploy riêng
+
+Production nên tách:
+Controller nodes
+Broker nodes
+Không nên chạy combined mode cho production lớn.
+
+
+BƯỚC 1 – Chuẩn bị StorageClass
+OpenEBS LocalPV
+Hoặc local SSD
+
+BƯỚC 2 – Cài Strimzi Operator
+kubectl create namespace kafka
+Cài operator:
+kubectl apply -f https://strimzi.io/install/latest?namespace=kafka -n kafka
+kubectl get pods -n kafka
+
+BƯỚC 3 – Deploy Kafka Cluster (KRaft chuẩn production)
+
+cau hinh dual-role (combined mode) — tức mỗi pod vừa là broker + controller, mot so version cu thi combined mode la mac dinh nhung van nen cau hinh cu the 
+vi kafka-nodepool.yaml
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  replicas: 3
+  roles:
+    - broker
+    - controller
+  storage:
+    type: persistent-claim
+    size: 0.5Gi
+    class: openebs-localpv
+    deleteClaim: false
+
+kubectl apply -f kafka-nodepool.yaml
+
+File: kafka-prod.yaml
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: my-cluster
+  namespace: kafka
+spec:
+  kafka:
+    version: 4.1.1
+    metadataVersion: 4.1-IV0
+    listeners:
+      - name: internal
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      #transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      #log.retention.hours: 168
+      #log.segment.bytes: 1073741824
+
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+
+kubectl apply -f kafka-prod.yaml
+
+KRaft được kích hoạt tự động khi có NodePool role=controller.
+
+kubectl get kafkanodepool -n kafka
+kubectl get kafka -n kafka
+kubectl get pods -n kafka
+
+Kiểm tra cluster health
+kubectl exec -it my-cluster-dual-role-0 -n kafka -- \
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+Thu tao topic
+kubectl exec -it my-cluster-dual-role-0 -n kafka -- \
+/opt/kafka/bin/kafka-topics.sh \
+--bootstrap-server localhost:9092 \
+--create \
+--topic test \
+--partitions 3 \
+--replication-factor 3
+
+kubectl exec -it my-cluster-dual-role-0 -n kafka -- \
+/opt/kafka/bin/kafka-topics.sh \
+--bootstrap-server localhost:9092 \
+--list
+
+kubectl exec -it my-cluster-dual-role-0 -n kafka -- \
+/opt/kafka/bin/kafka-topics.sh \
+--bootstrap-server localhost:9092 \
+--describe \
+--topic test
+
+Enable Authentication (Production bắt buộc)
+Ví dụ bật SCRAM:
+listeners:
+  - name: internal
+    port: 9092
+    type: internal
+    tls: true
+    authentication:
+      type: scram-sha-512
+
+
+Tạo user:
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: app-user
+  namespace: kafka
+spec:
+  authentication:
+    type: scram-sha-512
+
+kubectl apply -f kafka-user.yaml
+
+BƯỚC 5 – Deploy Kafka Connect (cho Debezium)
+
+Build Custom Kafka Connect Image truoc, neu dung mac dinh co the loi Class io.debezium.connector.mysql.MySqlConnector not found
+- Kafka Connect base image của Strimzi
+- Debezium plugin
+- Các connector khác nếu cần
+
+Tạo Dockerfile
+FROM quay.io/strimzi/kafka:0.46.0-kafka-4.1.1
+USER root
+RUN mkdir -p /opt/kafka/plugins/debezium \
+ && curl -L https://repo1.maven.org/maven2/io/debezium/debezium-connector-mysql/2.5.0.Final/debezium-connector-mysql-2.5.0.Final-plugin.tar.gz \
+ | tar -xz -C /opt/kafka/plugins/debezium
+USER 1001
+
+
+docker build -t registry.local/kafka-connect:4.1.1-debezium .
+docker push registry.local/kafka-connect:4.1.1-debezium
+
+File: kafka-connect.yaml
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnect
+metadata:
+  name: kafka-connect
+  namespace: kafka
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  replicas: 3
+  bootstrapServers: my-cluster-kafka-bootstrap:9092
+  image: harbor.coquan.vn/library/kafka-connect-debezium:2.5
+
+  groupId: connect-cluster
+  offsetStorageTopic: connect-offsets
+  configStorageTopic: connect-configs
+  statusStorageTopic: connect-status
+
+  config:
+    offset.storage.replication.factor: 3
+    config.storage.replication.factor: 3
+    status.storage.replication.factor: 3
+    plugin.path: /opt/kafka/plugins
+
+    key.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    key.converter.schemas.enable: false
+    value.converter.schemas.enable: false
+
+kubectl apply -f kafka-connect.yaml
+
+
+BƯỚC 6 – Deploy Debezium Connector
+Ví dụ MySQL:
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: mysql-connector
+  namespace: kafka
+spec:
+  class: io.debezium.connector.mysql.MySqlConnector
+  tasksMax: 1
+  config:
+    database.hostname: mysql
+    database.port: 3306
+    database.user: debezium
+    database.password: password
+    database.server.id: 184054
+    database.server.name: dbserver1
+    topic.prefix: mysql
+
+vi du Debezium YugabyteDB Connector (PostgreSQL-compatible):
+Yêu cầu YugabyteDB YugabyteDB v2.14+ (khuyến nghị mới hơn)
+Bật logical replication (mặc định Yugabyte đã hỗ trợ)
+User có quyền:
+REPLICATION
+LOGIN
+
+Ví dụ tạo user:
+CREATE ROLE debezium WITH LOGIN PASSWORD 'dbzSaasVHV2627' REPLICATION;
+GRANT ALL PRIVILEGES ON DATABASE vhv_saas TO debezium;
+
+KafkaConnector (Yugabyte / PostgreSQL)
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: yugabyte-connector
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-connect
+spec:
+  class: io.debezium.connector.postgresql.PostgresConnector
+  tasksMax: 1
+  config:
+    database.hostname: yb-tservers.yugabyte.svc.cluster.local
+    database.port: 5433
+    database.user: debezium
+    database.password: dbzSaasVHV2627
+    database.dbname: vhv_saas
+    topic.prefix: cdc
+
+    plugin.name: pgoutput
+    slot.name: debezium_slot
+    publication.autocreate.mode: filtered
+
+    table.include.list: public.users
+
+    schema.history.internal.kafka.bootstrap.servers: my-cluster-kafka-bootstrap:9092
+    schema.history.internal.kafka.topic: schema-changes.yugabyte
+
+kubectl apply -f yugabyte-connector.yaml
+
+kubectl get kafkaconnector -n kafka
+
+Consume test:
+kubectl exec -it my-cluster-dual-role-0 -n kafka -- \
+ /opt/kafka/bin/kafka-console-consumer.sh \
+ --bootstrap-server localhost:9092 \
+ --topic cdc.public.users \
+ --from-beginning
+
+kubectl exec -it my-cluster-dual-role-0 -n kafka -- \
+ /opt/kafka/bin/kafka-topics.sh \
+ --bootstrap-server localhost:9092 \
+ --list
+
+
+BƯỚC 7 – Monitoring (Production bắt buộc)
+Bật metrics trong Kafka:
+metricsConfig:
+  type: jmxPrometheusExporter
+
+Cài:
+Prometheus
+Grafana
+Alertmanager
+
+⚠️ Những sai lầm phổ biến khi dùng KRaft
+❌ Không tách controller khi cluster lớn
+❌ Dùng storage network chậm
+❌ replication.factor < 3
+❌ Không set min.insync.replicas
+❌ Không monitor consumer lag
+
+🎯 Checklist Production Chuẩn
+✔ 3 broker tối thiểu
+✔ replication.factor=3
+✔ min.insync.replicas=2
+✔ TLS bật
+✔ Authentication bật
+✔ Storage LocalPV
+✔ deleteClaim=false
+✔ Monitoring đầy đủ
