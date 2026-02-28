@@ -30,6 +30,12 @@ kubectl edit svc longhorn-frontend -n longhorn-system
 #xem port va truy cap
 kubectl -n longhorn-system get svc
 
+Snapshot nội bộ của Longhorn
+Snapshot trong UI Longhorn:
+Không cần cài thêm CRD
+Không liên quan đến Kubernetes VolumeSnapshot
+Hoạt động hoàn toàn bên trong Longhorn, KHÔNG cần cài thêm CRD gì cả
+
 #Thêm disk vào Longhorn (BƯỚC QUAN TRỌNG)
 Vào Longhorn UI → Node → từng node
 Thêm disk:
