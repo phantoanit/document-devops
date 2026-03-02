@@ -1,0 +1,162 @@
+1️⃣ Kiến trúc khuyến nghị cho Production
+✅ Mô hình đề xuất
+RabbitMQ Cluster: 3 nodes
+
+Sử dụng Quorum Queue
+Persistent Volume (không dùng emptyDir)
+Anti-affinity (mỗi pod trên 1 node)
+PodDisruptionBudget
+Resource limit rõ ràng
+TLS nếu production public/internal critical
+Monitoring + Metrics
+
+Kubernetes >= 1.23
+StorageClass production
+kubectl get storageclass
+
+BƯỚC 1: Cài RabbitMQ Cluster Operator
+
+Cai krew
+Krew là plugin manager cho kubectl, công cụ hỗ trợ vận hành Kubernetes:
+(
+set -x; cd "$(mktemp -d)" &&
+OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+KREW="krew-${OS}_${ARCH}" &&
+curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+tar zxvf "${KREW}.tar.gz" &&
+./"${KREW}" install krew
+)
+
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+
+# case 1 tải rabbitmq thu vien da co trong krew
+kubectl krew install rabbitmq
+Tạo RabbitMQ Cluster Production
+kubectl rabbitmq -n rabbitmq-system create rabbitmq --replicas 3 --service ClusterIP --image rabbitmq:3.13-management --storage-class longhorn
+
+#case 2 tự Tạo RabbitMQ Cluster
+kubectl create namespace rabbitmq-system
+Cài operator:
+kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml
+kubectl get pods -n rabbitmq-system
+rabbitmq-cluster-operator-xxxxx Running
+
+vi rabbitmq-prod.yaml
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq-prod
+  namespace: rabbitmq
+spec:
+  replicas: 3
+
+  image: rabbitmq:3.13-management
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "0.5Gi" #1Gi
+    limits:
+      cpu: "1"
+      memory: "1Gi" #2Gi
+
+  persistence:
+    storageClassName: longhorn   # chỉnh theo storage của bạn
+    storage: 0.5Gi
+
+  rabbitmq:
+    additionalConfig: |
+      cluster_partition_handling = pause_minority
+      vm_memory_high_watermark.relative = 0.6
+      disk_free_limit.relative = 1.5
+      management.tcp.port = 15672
+      listeners.tcp.default = 5672
+
+  override:
+    statefulSet:
+      spec:
+        template:
+          spec:
+            containers: []
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: rabbitmq-prod
+                    topologyKey: kubernetes.io/hostname
+
+kubectl create namespace rabbitmq
+kubectl apply -f rabbitmq-prod.yaml
+kubectl get pods -n rabbitmq
+rabbitmq-prod-server-0
+rabbitmq-prod-server-1
+rabbitmq-prod-server-2
+
+Kiểm tra cluster:
+kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- rabbitmqctl cluster_status
+
+BƯỚC 4: Truy cập Management UI
+Lấy service:
+kubectl get svc -n rabbitmq
+Port-forward:
+kubectl port-forward svc/rabbitmq-prod 15672:15672 -n rabbitmq
+Truy cập:
+http://localhost:15672
+Lấy password:
+kubectl get secret rabbitmq-prod-default-user -n rabbitmq -o jsonpath='{.data.password}' | base64 -d
+
+Production Hardening
+- Không dùng default user, Tạo user mới:
+kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- rabbitmqctl add_user appuser StrongPassword
+kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- rabbitmqctl set_permissions -p / appuser ".*" ".*" ".*"
+
+- Bật TLS (khuyến nghị)
+Tạo secret TLS
+Cấu hình listener.ssl
+Bật verify_peer
+(Có thể cung cấp manifest TLS nếu bạn cần)
+
+- PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rabbitmq-pdb
+  namespace: rabbitmq
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+
+kubectl apply -f pdb.yaml
+
+- Monitoring Prometheus
+Bật plugin:
+
+rabbitmq:
+  additionalPlugins:
+    - rabbitmq_prometheus
+
+Expose metrics:
+
+:15692/metrics
+
+- cấu hình HA đúng cách
+Dùng Quorum Queue
+Khi tạo queue:
+
+x-queue-type = quorum
+
+Resource sizing khuyến nghị
+| Load       | CPU      | RAM   |
+| ---------- | -------- | ----- |
+| Nhẹ        | 500m     | 1Gi   |
+| Trung bình | 1 core   | 2-4Gi |
+| Cao        | 2-4 core | 8Gi+  |
+
+
+Backup Strategy
+Export config:
+rabbitmqctl export_definitions /tmp/backup.json
