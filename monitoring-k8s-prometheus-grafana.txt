@@ -1,3 +1,4 @@
+### case 1 su dung storage nfs
 #Thực hiện trên server master-storage
 #Tạo thư mục lưu trữ
 mkdir -p /data/nfs-shared/monitoring/grafana/
@@ -73,5 +74,31 @@ grafana:
 #Khởi chạy lại kube prometheus stack
 helm upgrade --install toandevops prometheus-community/kube-prometheus-stack -f values.yaml --namespace monitoring
 
+Lấy password Grafana
+user: admin
+Lấy password:
+kubectl get secret monitoring-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 --decode
 
+### case 2 su dung storage longhorn
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+-n monitoring \
+--set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
+--set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=0.5Gi \
+--set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
+--set grafana.persistence.accessModes[0]=ReadWriteOnce \
+--set grafana.persistence.enabled=true \
+--set grafana.persistence.storageClassName=longhorn \
+--set grafana.persistence.size=0.5Gi
+
+helm upgrade monitoring prometheus-community/kube-prometheus-stack \
+-n monitoring \
+--set grafana.service.type=NodePort \
+--set grafana.service.nodePort=30081 \
+--set prometheus.service.type=NodePort \
+--set prometheus.service.nodePort=30082
+
+Lấy password Grafana
+user: admin
+Lấy password:
+kubectl get secret monitoring-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 --decode
 
