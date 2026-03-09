@@ -109,17 +109,35 @@ netfilter-persistent save
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
 #Port test performance
 -A INPUT -p tcp -m multiport -m state --state NEW -m tcp -m comment --comment "Ket noi do tai server" --dports 9000 -j ACCEPT
+
 # public entrypoint web
 -A INPUT -p tcp -m multiport -m state --state NEW -m comment --comment "Ket noi public" --dports 80,443 -j ACCEPT
 
+#-A OUTPUT -p tcp -m multiport -m state --state NEW -m tcp --dports 80,443,9000:9010 -m comment --comment "Ket noi nginx upstream" -j ACCEPT
+
 # cho phep ip noi bo ket noi App backend
 -A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m multiport --dports 8080,8081,3301 -j ACCEPT
+#-A OUTPUT -m iprange --dst-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 8080,8081,3301 -m comment --comment "Ket noi nginx upstream" -j ACCEPT
 
 ### Case Ket noi App di vao db
 -A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 8200:8300 -m comment --comment "Ket noi app den db" -j ACCEPT
 -A INPUT -m iprange --src-range 10.121.46.55-10.121.46.64 -p tcp -m state --state NEW -m tcp -m multiport --dports 8200:8300 -m comment --comment "Ket noi mongo" -j ACCEPT
 ### Ket noi db to db
 #-A OUTPUT -m iprange --dst-range 10.121.46.55-10.121.46.64 -p tcp -m state --state NEW -m tcp -m multiport --dports 8200:8300 -m comment --comment "Ket noi mongodb" -j ACCEPT
+
+### Case Ket noi solr,zookeeper
+-A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 2181:2183,2888:2890,3888:3890 -m comment --comment "Ket noi zookeeper" -j ACCEPT
+-A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 8983:8986 -m comment --comment "Ket noi solr" -j ACCEPT
+#-A OUTPUT -m iprange --dst-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 2181:2183,2888:2890,3888:3890 -m comment --comment "Ket noi Zookeeper" -j ACCEPT
+#-A OUTPUT -m iprange --dst-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 8983:8986 -m comment --comment "Ket noi solr" -j ACCEPT
+
+### Case Ket noi Redis
+-A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 6379,8001:8006,18001:18006 -m comment --comment "Ket noi redis" -j ACCEPT
+#-A OUTPUT -m iprange --dst-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 6379,8001:8006,18001:18006 -m comment --comment "Ket noi redis" -j ACCEPT
+
+### Case Ket noi dong bo media
+-A INPUT -m iprange --src-range 10.121.46.51-10.121.46.52 -p tcp -m state --state NEW -m tcp -m multiport --dports 22 -m comment --comment "Ket noi dong bo media" -j ACCEPT
+#-A OUTPUT -m iprange --dst-range 10.121.46.51-10.121.46.52 -p tcp -m state --state NEW -m tcp -m multiport --dports 22 -m comment --comment "Ket noi dong bo media" -j ACCEPT
 
 #OUTPUT chain – gói tin đi ra từ server
 # Loopback & ICMP
