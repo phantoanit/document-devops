@@ -111,8 +111,15 @@ netfilter-persistent save
 -A INPUT -p tcp -m multiport -m state --state NEW -m tcp -m comment --comment "Ket noi do tai server" --dports 9000 -j ACCEPT
 # public entrypoint web
 -A INPUT -p tcp -m multiport -m state --state NEW -m comment --comment "Ket noi public" --dports 80,443 -j ACCEPT
+
 # cho phep ip noi bo ket noi App backend
 -A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m multiport --dports 8080,8081,3301 -j ACCEPT
+
+### Case Ket noi App di vao db
+-A INPUT -m iprange --src-range 10.121.46.48-10.121.46.67 -p tcp -m state --state NEW -m tcp -m multiport --dports 8200:8300 -m comment --comment "Ket noi app den db" -j ACCEPT
+-A INPUT -m iprange --src-range 10.121.46.55-10.121.46.64 -p tcp -m state --state NEW -m tcp -m multiport --dports 8200:8300 -m comment --comment "Ket noi mongo" -j ACCEPT
+### Ket noi db to db
+#-A OUTPUT -m iprange --dst-range 10.121.46.55-10.121.46.64 -p tcp -m state --state NEW -m tcp -m multiport --dports 8200:8300 -m comment --comment "Ket noi mongodb" -j ACCEPT
 
 #OUTPUT chain – gói tin đi ra từ server
 # Loopback & ICMP
@@ -128,8 +135,8 @@ netfilter-persistent save
 #/var/log/kern.log
 #/var/log/syslog
 -A INPUT -j LOG --log-level 4 --log-prefix "IPTABLES DROP"
--A FORWARD -j LOG --log-prefix "IPTABLES DROP"
--A OUTPUT -j LOG --log-prefix "IPTABLES DROP"
+-A FORWARD -j LOG --log-level 4 --log-prefix "IPTABLES DROP"
+-A OUTPUT -j LOG --log-level 4 --log-prefix "IPTABLES DROP"
 
 #Reject tất cả còn lại (Default deny), Trả về ICMP host prohibited, client biết bị chặn con neu dung DROP im lang thi client khong biet
 -A INPUT -j REJECT --reject-with icmp-host-prohibited
@@ -138,4 +145,6 @@ netfilter-persistent save
 
 #Áp dụng toàn bộ rule
 COMMIT
+#khoi dong lai neu can
+service iptables restart
 
