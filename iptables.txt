@@ -92,6 +92,7 @@ apt install iptables-persistent
 netfilter-persistent save
 
 ###### vi du cau hinh #######
+/etc/sysconfig/iptables
 
 *filter //Sử dụng table filter (firewall)
 #khai bao 3 chain/chuoi quy tac mac dinh
