@@ -90,6 +90,10 @@ iptables -t nat -L -n -v
 #Lưu cấu hình iptables (Ubuntu)
 apt install iptables-persistent
 netfilter-persistent save
+#Luu ra file
+sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+#iptables-persistent sử dụng các file tiêu chuẩn tại /etc/iptables/. Đây là nơi hệ thống tự động đọc mỗi khi khởi động.
+sudo netfilter-persistent reload
 
 ###### vi du cau hinh #######
 /etc/sysconfig/iptables
