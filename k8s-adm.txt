@@ -263,6 +263,8 @@ kubectl get endpoints echo
 - tim kiem text trong thu muc: grep -R --include="*.yaml" "cpu: " production-bk/
 - tim kiem text va replate: find . -type f -name "*.yaml" -exec sed -i 's#cpu: 1.5#cpu: 1#g' {} +
 - tim kiem file trong thu muc va thu muc con: find . -type f -name "*.txt"
+- curl -k -H "Host: dangcongsan.vn" http://103.221.230.133
+
 - neu pod xoa bi ket: kubectl delete pod --all -n yugabyte --force --grace-period=0
 - neu namepsace bi ket: kubectl delete ns yugabyte --force --grace-period=0
 - neu bi ket o pv: kubectl get pv | grep yugabyte | awk '{print $1}' | xargs kubectl delete pv
