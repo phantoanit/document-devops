@@ -178,6 +178,14 @@ vi my-policy.json
 mc admin policy create onprem my-bucket-full-access my-policy.json
 # Gán policy đó cho user vừa tạo
 mc admin policy attach onprem my-bucket-full-access --user <NewAccessKey>
+# Kiem tra lai tren user moi
+mc alias set onprem https://minio.example.com appuser StrongPasswordHere
+mc ls onprem
+
+# Cấu hình tự động xóa các bản backup cũ sau 30
+mc ilm add onprem/app-data --expiry-days 30
+#Kiem tra lai
+mc ilm ls myminio/mysql-backups
 
 #Bật versioning (nên bật cho production)
 mc version enable onprem/app-data
