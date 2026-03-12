@@ -95,6 +95,8 @@ CREATE USER 'backup'@'localhost' IDENTIFIED BY 'STRONG_PASSWORD';
 GRANT SELECT, SHOW VIEW, EVENT, TRIGGER, LOCK TABLES
 ON *.* TO 'backup'@'localhost';
 FLUSH PRIVILEGES;
+#kiem tra
+mysql -u backup -P 4006 --skip-ssl -p
 
 mysqldump --single-transaction --routines --events --triggers --hex-blob --databases db1 db2 -ubackup | gzip > dump-db1-db2.sql.gz
 gunzip < dump.sql.gz | mysql -P 4006 -u roundcube -p
