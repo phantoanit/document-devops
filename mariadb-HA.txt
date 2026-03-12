@@ -71,8 +71,8 @@ sudo cp /etc/maxscale.cnf /etc/maxscale.cnf.org
 sudo vi /etc/maxscale.cnf
 #cau hinh du cac block server1, server2, ...
 #block monitor khai bao du server1, server2, .. cau hinh tai khoan va mat khau ket noi thoi mariadb - co the tao tai khoan sau roi moi start maxscale
-#block read only service: khai bao cac node cho phep read, thuong thi khai bao het dam bao HA, cau hinh dung user va pass
-#block read write service: khai bao cac node cho web write, thuong thi khai bao het dam bao HA, cau hinh dung user va pass
+#block read only service: khai bao cac node cho phep read, thuong thi khai bao het dam bao HA, cau hinh dung user va pass, port 4008
+#block read write service: khai bao cac node cho web write, thuong thi khai bao het dam bao HA, cau hinh dung user va pass, port 4006
 #[MaxScale]
 #dns_strategy=none // bo qua phan giai dns
 
