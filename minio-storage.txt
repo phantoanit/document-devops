@@ -134,10 +134,6 @@ mc admin info onprem
 #kiem tra disk
 mc admin heal -r onprem
 
-#IAM & phân quyền
-mc admin user add onprem app-user StrongPass
-mc admin policy attach onprem readwrite --user app-user
-
 #Monitoring & Alert
 Prometheus: :9000/minio/v2/metrics/cluster
 Grafana: dashboard official MinIO
@@ -148,9 +144,40 @@ mc ls onprem
 
 #Tạo user riêng cho application (QUAN TRỌNG) Không dùng root cho app.
 mc admin user add onprem appuser appuser123
-#Gán policy read/write
-#Cho full quyền bucket:
+
+#IAM & phân quyền
+#MinIO có sẵn các nhóm quyền cơ bản mà bạn có thể gán ngay lập tức cho User:
+readonly: Chỉ được xem và tải file.
+readwrite: Được phép đọc, ghi và xóa file trên tất cả các bucket.
+diagnostics: Quyền xem thông tin hệ thống.
+writeonly: Chỉ được phép upload.
+
 mc admin policy attach onprem readwrite --user appuser
+
+# Gan quyen cu the cho bucket, bat buoc tao policy
+Chỉ cho phép Download (Read-Only): Thay s3:* thành ["s3:GetObject", "s3:GetBucketLocation"].
+Chỉ cho phép Upload (Write-Only): Thay s3:* thành ["s3:PutObject"].
+Toàn quyền (Admin của Bucket đó): Dùng s3:* như ví dụ trên.
+vi my-policy.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::app-data"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:*"],
+      "Resource": ["arn:aws:s3:::app-data/*"]
+    }
+  ]
+}
+# Thêm policy vào hệ thống
+mc admin policy create onprem my-bucket-full-access my-policy.json
+# Gán policy đó cho user vừa tạo
+mc admin policy attach onprem my-bucket-full-access --user <NewAccessKey>
 
 #Bật versioning (nên bật cho production)
 mc version enable onprem/app-data
