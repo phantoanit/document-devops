@@ -140,6 +140,7 @@ Grafana: dashboard official MinIO
 
 #Tạo bucket lưu dữ liệu:
 mc mb onprem/app-data
+#kiem tra
 mc ls onprem
 
 #Tạo user riêng cho application (QUAN TRỌNG) Không dùng root cho app.
