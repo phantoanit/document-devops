@@ -1,0 +1,522 @@
+Kiến trúc production chuẩn 3 VM
+VM1: clickhouse-01 + keeper
+VM2: clickhouse-02 + keeper
+VM3: clickhouse-03 + keeper
+
+Mỗi node chạy 2 service:
+clickhouse-server
+clickhouse-keeper
+
+1 shard
+3 replica
+local SSD
+ReplicatedMergeTree
+Distributed table
+
+Khuyến nghị tối thiểu/node:
+4 vCPU
+16GB RAM
+200GB SSD/NVMe
+
+/etc/hosts trên cả 3 node
+10.0.0.11 ch01
+10.0.0.12 ch02
+10.0.0.13 ch03
+
+sudo vi /etc/sysctl.d/99-clickhouse.conf
+#Hạn chế tối đa việc sử dụng Swap (ClickHouse rất ghét Swap vì làm chậm I/O)
+vm.swappiness=1
+# Kiểm soát tần suất hệ điều hành ghi dữ liệu (dirty pages) xuống đĩa
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 15
+# Tăng số lượng memory map area (ClickHouse dùng mmap rất nhiều)
+vm.max_map_count=262144
+fs.file-max=1000000
+# theo dõi thời gian process chờ:
+kernel.task_delayacct=1
+# --- Tối ưu hóa Network (Mạng) ---
+# Tăng kích thước hàng đợi cho các kết nối mới (tránh rớt kết nối khi có burst traffic)
+net.core.somaxconn=65535
+# Cho phép tái sử dụng các cổng TCP đang ở trạng thái TIME_WAIT
+net.ipv4.tcp_tw_reuse = 1
+# Tăng kích thước bộ đệm TCP để cải thiện băng thông mạng
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+
+sudo sysctl --system
+
+# Tăng giới hạn tài nguyên hệ thống: 
+sudo vi /etc/security/limits.conf
+*               soft    nofile            990000
+*               hard    nofile            990000
+*               soft    nproc            990000
+*               hard    nproc            990000
+
+
+# Disable transparent hugepage
+
+sudo echo never > /sys/kernel/mm/transparent_hugepage/enabled
+sudo echo never > /sys/kernel/mm/transparent_hugepage/defrag
+
+#tạo service:
+vi /etc/systemd/system/disable-thp.service
+[Unit]
+Description=Disable THP
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=multi-user.target
+
+systemctl daemon-reload
+systemctl enable disable-thp
+systemctl start disable-thp
+
+## Case 1 co internet, Cài ClickHouse repository
+sudo apt install -y gnupg apt-transport-https ca-certificates curl
+sudo curl https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+sudo echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list
+sudo apt update
+sudo apt install -y clickhouse-server clickhouse-client
+
+## Case 2 cai qua source tgz
+# chuan bi 3 goi cai dat va giai nen 
+cd /u01/colombo/clickhouse
+clickhouse-common-static
+clickhouse-server //tuy chon, co the tu tao config
+clickhouse-client //tuy chon, no chi la goi file symlink
+
+# liệt kê tất cả thư viện mà binary đang cần.
+ldd ./clickhouse
+
+sudo ln -s /u01/colombo/clickhouse/clickhouse-common-static/usr/bin/clickhouse  /usr/bin/clickhouse
+clickhouse --version
+
+ln -s /u01/colombo/clickhouse/clickhouse-common-static/usr/bin/clickhouse /u01/colombo/clickhouse/clickhouse-client/usr/bin/clickhouse
+sudo ln -s /u01/colombo/clickhouse/clickhouse-client/usr/bin/clickhouse-client /usr/bin/clickhouse-client
+clickhouse-client --version
+
+# Tạo user hệ thống production do tu cai qua source 
+sudo groupadd clickhouse
+sudo useradd -g clickhouse clickhouse
+
+# Tạo directory chuẩn production
+mkdir -p /u01/colombo/etc/clickhouse-server
+sudo cp -r /u01/colombo/clickhouse/clickhouse-server/etc/clickhouse-server/* /u01/colombo/etc/clickhouse-server/
+sudo chown -R colombo:colombo /u01/colombo/etc/clickhouse-server
+mkdir -p /u01/colombo/clickhouse/data
+sudo mkdir -p /u01/colombo/clickhouse/data/{tmp,user_files,format_schemas,access}
+sudo chown -R colombo:colombo /u01/colombo/clickhouse/data
+mkdir -p /u01/colombo/var/log/clickhouse-server
+sudo chown -R colombo:colombo /u01/colombo/var/log/clickhouse-server
+
+# sua cau hinh neu truoc do chua chuan bi 
+# replate to path data
+vi /u01/colombo/etc/clickhouse-server/config.xml
+%s#<path>/var/lib/clickhouse/</path>#<path>/u01/colombo/clickhouse/data/</path>#gc
+%s#<tmp_path>/var/lib/clickhouse/tmp/</tmp_path>#<tmp_path>/u01/colombo/clickhouse/data/tmp/</tmp_path>#gc
+%s#<user_files_path>/var/lib/clickhouse/user_files/</user_files_path>#<user_files_path>/u01/colombo/clickhouse/data/user_files/</user_files_path>#gc
+%s#<log>/var/log/clickhouse-server/clickhouse-server.log</log>#<log>/u01/colombo/var/log/clickhouse-server/clickhouse-server.log</log>#gc
+%s#<errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>#<errorlog>/u01/colombo/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>#gc
+%s#<format_schema_path>/var/lib/clickhouse/format_schemas/</format_schema_path>#<format_schema_path>/u01/colombo/clickhouse/data/format_schemas/</format_schema_path>#gc
+%s#<path>/var/lib/clickhouse/access/</path>#<path>/u01/colombo/clickhouse/data/access/</path>#gc
+# cau hinh dia chi host tren moi node khac nhau
+vi /u01/colombo/etc/clickhouse-server/config.xml
+<interserver_http_host>10.10.10.41</interserver_http_host>
+
+# Tạo systemd service chuẩn
+sudo vi /etc/systemd/system/clickhouse-server.service
+[Unit]
+Description=ClickHouse Server
+After=network.target
+
+[Service]
+User=devops
+Group=devops
+ExecStart=/u01/colombo/clickhouse/clickhouse-server/usr/bin/clickhouse server --config-file=/u01/colombo/etc/clickhouse-server/config.xml
+Restart=always
+RestartSec=5
+TimeoutStopSec=300
+LimitNOFILE=500000
+
+[Install]
+WantedBy=multi-user.target
+
+systemctl daemon-reload
+
+# Cấu hình keeper production
+sudo vi /u01/colombo/etc/clickhouse-server/config.d/keeper.xml
+<clickhouse>
+  <listen_host>0.0.0.0</listen_host>
+  <keeper_server>
+    <tcp_port>9181</tcp_port>
+    <server_id>1</server_id>
+
+    <log_storage_path>/u01/colombo/clickhouse/data/keeper/log</log_storage_path>
+    <snapshot_storage_path>/u01/colombo/clickhouse/data/keeper/snapshots</snapshot_storage_path>
+
+    <raft_configuration>
+      <server>
+        <id>1</id>
+        <hostname>10.10.10.41</hostname>
+        <port>9234</port>
+      </server>
+      <server>
+        <id>2</id>
+        <hostname>10.10.10.42</hostname>
+        <port>9234</port>
+      </server>
+      <server>
+        <id>3</id>
+        <hostname>10.10.10.43</hostname>
+        <port>9234</port>
+      </server>
+    </raft_configuration>
+  </keeper_server>
+</clickhouse>
+
+#node2 đổi:
+server_id=2
+
+#node3 đổi:
+server_id=3
+
+#Cấu hình cluster replication tren 3 node, deu giong nhau
+#internal_replication = true, Trong shard này, các replica tự replicate qua ZooKeeper / Keeper, chỉ gửi 1 replica duy nhất, replica còn lại tự sync
+sudo vi /u01/colombo/etc/clickhouse-server/config.d/cluster.xml
+<clickhouse>
+    <remote_servers>
+        <prod_cluster>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>10.10.10.41</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>10.10.10.42</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>10.10.10.43</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </prod_cluster>
+    </remote_servers>
+
+    <zookeeper>
+        <node>
+            <host>10.10.10.41</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>10.10.10.42</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>10.10.10.43</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+</clickhouse>
+
+# Cấu hình Macro từng node
+sudo vi /u01/colombo/etc/clickhouse-server/config.d/macros.xml
+#node1
+<clickhouse>
+    <macros>
+        <shard>1</shard>
+        <replica>10.10.10.41</replica>
+    </macros>
+</clickhouse>
+
+# sua tai node2, giu nguyen shard 1
+replica=10.10.10.42
+
+# sua tai node3, giu nguyen shard 1
+replica=10.10.10.43
+
+# Start service
+systemctl enable clickhouse-server
+systemctl start clickhouse-server
+
+# Verify cluster
+clickhouse-client
+
+## Cai dat voi case cai qua goi apt
+
+# tách disk data production
+/data/clickhouse
+
+mkfs.ext4 /dev/sdb
+sudo mkdir -p /data/clickhouse
+mount /dev/sdb /data/clickhouse
+
+/dev/sdb /data/clickhouse ext4 defaults,noatime 0 2
+
+sudo chown -R clickhouse:clickhouse /data #/var/log/clickhouse-server /var/lib/clickhouse
+sudo chmod -R 750 /data/clickhouse
+sudo chmod o+x /data
+
+#Chỉnh data path 
+sudo vi /etc/clickhouse-server/config.d/storage.xml
+<clickhouse>
+    <path>/data/clickhouse/</path>
+
+    <tmp_path>/data/clickhouse/tmp/</tmp_path>
+
+    <user_files_path>/data/clickhouse/user_files/</user_files_path>
+</clickhouse>
+
+
+# mac dinh Background thread lớn: Create BackgroundSchedulePool with 512 threads
+# lam lab nen thay doi
+sudo vi /etc/clickhouse-server/config.d/tuning.xml
+<clickhouse>
+    <background_schedule_pool_size>64</background_schedule_pool_size>
+    <background_pool_size>4</background_pool_size>
+    <background_buffer_flush_schedule_pool_size>8</background_buffer_flush_schedule_pool_size>
+</clickhouse>
+
+#Ví dụ thực tế kiểm tra path đã override chưa
+sudo -u clickhouse clickhouse-server --config-file /etc/clickhouse-server/config.xml
+
+#restart:
+sudo systemctl restart clickhouse-server
+
+#Cấu hình ClickHouse Keeper
+sudo vi /etc/clickhouse-server/config.d/keeper.xml
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+    <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+
+        <log_storage_path>/data/clickhouse/keeper/log</log_storage_path>
+        <snapshot_storage_path>/data/clickhouse/keeper/snapshots</snapshot_storage_path>
+
+        <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>clickhouse1</hostname>
+                <port>9234</port>
+            </server>
+            <server>
+                <id>2</id>
+                <hostname>clickhouse2</hostname>
+                <port>9234</port>
+            </server>
+            <server>
+                <id>3</id>
+                <hostname>clickhouse3</hostname>
+                <port>9234</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+</clickhouse>
+
+#node2 đổi:
+server_id=2
+hostname=ch02
+
+#node3 đổi:
+server_id=3
+hostname=ch03
+
+#Cấu hình cluster replication tren 3 node
+sudo vi /etc/clickhouse-server/config.d/cluster.xml
+<clickhouse>
+    <remote_servers>
+        <prod_cluster>
+            <shard>
+                <replica>
+                    <host>clickhouse1</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>clickhouse2</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>clickhouse3</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </prod_cluster>
+    </remote_servers>
+
+    <zookeeper>
+        <node>
+            <host>clickhouse1</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>clickhouse2</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>clickhouse3</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+</clickhouse>
+
+# Macro từng node
+sudo vi /etc/clickhouse-server/config.d/macros.xml
+#node1
+<clickhouse>
+    <macros>
+        <shard>1</shard>
+        <replica>clickhouse1</replica>
+    </macros>
+</clickhouse>
+
+node2
+replica=clickhouse2
+
+node3
+replica=clickhouse3
+
+# Start service
+sudo systemctl enable clickhouse-server
+sudo systemctl restart clickhouse-server
+
+# check:
+systemctl status clickhouse-server
+
+# Verify keeper quorum
+clickhouse-client
+SELECT * FROM system.zookeeper WHERE path = '/'; #Nếu OK sẽ thấy metadata.
+
+#Kiểm tra cluster đã nhận node chưa, theo cluster.xml
+SELECT * FROM system.clusters;
+
+#Kiểm tra replica thực sự hoạt động
+SELECT * FROM system.replicas;
+
+#Tạo replicated table production
+
+✅ Nếu chỉ tạo ReplicatedMergeTree mà không có Distributed
+Application phải tự biết:
+insert node nào
+=> production kém linh hoạt.
+
+✅ Nếu chỉ có Distributed mà không có ReplicatedMergeTree
+=> không có data backend.
+
+✅ Kết luận production
+✔ luôn tạo local trước
+✔ rồi tạo distributed
+
+CREATE TABLE logs ON CLUSTER prod_cluster
+(
+    ts DateTime,
+    service String,
+    message String
+)
+ENGINE = ReplicatedMergeTree(
+    '/clickhouse/tables/{shard}/logs',
+    '{replica}'
+)
+ORDER BY ts;
+
+#Tạo distributed table
+CREATE TABLE logs_all ON CLUSTER prod_cluster
+AS logs
+ENGINE = Distributed(prod_cluster, default, logs, rand());
+
+#Test replication
+#Insert node1:
+INSERT INTO logs VALUES (now(),'api','test');
+
+#Query node2:
+SELECT * FROM logs; #Nếu thấy row => replication OK ✅
+
+# Production tuning cực quan trọng, goi y
+users.xml
+<max_memory_usage>10000000000</max_memory_usage>
+<max_threads>8</max_threads>
+
+# merge limit
+<background_pool_size>8</background_pool_size>
+
+# Port cần mở firewall
+9000 native
+8123 http
+9181 keeper client
+9234 raft
+
+# Production best practice cực quan trọng
+Không insert từng row
+Sai:
+1 row / insert
+Đúng:
+10000 row / batch
+
+# Backup production
+ClickHouse backup đúng chuẩn voi data lon > 10TB là clickhouse tu tao snapshot
+Không copy trực tiếp data part giữa node đang chạy
+Nếu copy part raw:
+phải: SYSTEM STOP MERGES
+
+# Logical backup
+# cron backup
+# shell script
+#!/bin/bash
+
+DATE=$(date +%F_%H-%M)
+
+clickhouse-client --query "
+BACKUP DATABASE default
+TO Disk('minio_backup', 'daily_$DATE')
+"
+
+sudo chmod +x /opt/clickhouse-backup.sh
+
+# crontab -e
+0 2 * * * /opt/clickhouse-backup.sh
+
+# restore
+RESTORE DATABASE default AS restore_test
+FROM Disk('minio_backup', 'daily_backup_001');
+
+# cấu hình disk S3 trong ClickHouse
+sudo vi /etc/clickhouse-server/config.d/backup_s3.xml
+#metadata_path bắt buộc local.
+<clickhouse>
+  <storage_configuration>
+    <disks>
+      <minio_backup>
+        <type>s3</type>
+        <endpoint>http://192.168.181.100:9000/clickhouse-backup/</endpoint>
+        <access_key_id>clickhousebackup</access_key_id>
+        <secret_access_key>StrongPassword123</secret_access_key>
+        <metadata_path>/data/clickhouse/disks/minio_backup/</metadata_path>
+      </minio_backup>
+    </disks>
+  </storage_configuration>
+</clickhouse>
+
+#tao metadata dir
+sudo mkdir -p /data/clickhouse/disks/minio_backup
+sudo chown -R clickhouse:clickhouse /data/clickhouse/disks
+
+sudo systemctl restart clickhouse-server
+
+# kiểm tra disk nhận chưa
+SELECT * FROM system.disks; # mong muon hien ra minio_backup
+
+# backup thử 1 database
+BACKUP DATABASE default
+TO Disk('minio_backup', 'daily_backup_001');
+# kiem tra tren minio
+mc ls local/clickhouse-backup
+
+
+
