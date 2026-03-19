@@ -1,2 +1,2 @@
-mkdir -p /u01/colombo/yugabyte/data/master
+mkdir -p /u01/colombo/yugabyte/data/{master,tserver}
 mkdir -p /u01/colombo/var/logs/yugabyte
