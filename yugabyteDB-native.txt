@@ -1,2 +1,158 @@
+TRIỂN KHAI YUGABYTEDB ON-PREMISE
+
+Tài liệu này hướng dẫn cài đặt trên 3 máy chủ VM.
+
+# dat host name lan luot cho 3 vm yb1, yb2, yb3
+sudo hostnamectl set-hostname yb1
+
+#Tuning OS
+vi /etc/sysctl.d/99-yugabyte.conf
+vm.swappiness = 0
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
+kernel.sched_migration_cost_ns = 5000000
+kernel.numa_balancing = 0
+net.core.somaxconn = 65535
+net.ipv4.tcp_tw_reuse = 1
+
+#Disable THP
+sudo echo never > /sys/kernel/mm/transparent_hugepage/enabled
+sudo echo never > /sys/kernel/mm/transparent_hugepage/defrag
+#tạo service:
+vi /etc/systemd/system/disable-thp.service
+[Unit]
+Description=Disable THP
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=multi-user.target
+
+systemctl daemon-reload
+systemctl enable disable-thp
+systemctl start disable-thp
+
+# tao truoc cac thu muc an thiet
 mkdir -p /u01/colombo/yugabyte/data/{master,tserver}
 mkdir -p /u01/colombo/var/logs/yugabyte
+mkdir -p /u01/colombo/backups/yugabyte
+
+# Đẩy bộ cài đặt vào trong thư mục /u01/colombo và giải nén
+tar -xvzf yugabyte.tar.gz
+
+#Sửa thông tin cấu hình trong file cấu hình da chuan bi san master.conf
+master_addresses
+replication_factor = 3
+rpc_bind_addresses
+# trong file cấu hình tserver.conf
+tserver_master_addrs
+rpc_bind_addresses
+pgsql_proxy_bind_address
+
+# Start Master
+scripts/yb-master-start.sh
+# Start Tserver
+scripts/yb-tserver-start.sh 
+
+# Kiểm tra leader master
+/u01/colombo/yugabyte/bin/yb-admin -master_addresses 10.60.1.33:7100,10.60.3.33:7100,10.60.0.32:7100 list_all_masters
+
+# Sau khi 3 master + 3 tserver lên, bạn nên chạy lệnh này 1 lần duy nhất để cố định topology:
+yb-admin -master_addresses 10.60.1.33:7100,10.60.3.33:7100,10.60.0.32:7100 modify_placement_info cloud1.region1.zone1,cloud1.region1.zone2,cloud1.region1.zone3 3
+
+# Check trạng thái của cụm
+/u01/colombo/scripts/yb-status.sh
+Kết quả
+======================================
+ YUGABYTE NODE STATUS
+======================================
+
+1. Process status
+--------------------------------------
+yb-master  : RUNNING
+yb-tserver : RUNNING
+
+2. Port status
+--------------------------------------
+Master RPC (7100) : LISTENING
+TServer RPC (9100): LISTENING
+YSQL (5433)       : LISTENING
+
+3. Cluster master role
+--------------------------------------
+Master UUID                      	RPC Host/Port        	State    	Role 	Broadcast Host/Port 
+b7542d73f283406bb40cd34f895427ee 	10.60.1.33:7100      	ALIVE    	LEADER 	N/A                 
+2abc3b2d08e8402cb85ce36c524b905f 	10.60.3.33:7100      	ALIVE    	FOLLOWER 	N/A                 
+8dee549e7aa84d06b86064eb073a0cf1 	10.60.0.32:7100      	ALIVE    	FOLLOWER 	N/A                 
+
+4. Tablet servers
+--------------------------------------
+Tablet Server UUID               RPC Host/Port Heartbeat delay Status   Reads/s  Writes/s Uptime   SST total size  SST uncomp size SST #files      Memory   Broadcast Host/Port 
+26e6d94193f5409cb728d911dcbe1107 10.60.3.33:9100 0.43s           ALIVE    0.00     0.00     188788   0 B             0 B             0               88.88 MB N/A
+284bbd31944944f291c30453c1782d9a 10.60.0.32:9100 0.61s           ALIVE    0.00     0.00     188787   0 B             0 B             0               89.24 MB N/A
+66d3a83d2111413ea740e87ec3fceeaa 10.60.1.33:9100 0.57s           ALIVE    0.00     0.00     188790   0 B             0 B             0               93.67 MB N/A
+
+======================================
+ CHECK FINISHED
+======================================
+
+# Sau khi cài đặt xong phải đổi password mặc định của user yugabyte, passs yugabyte
+/u01/colombo/yugabyte/bin/ysqlsh -h 127.0.0.1
+# doi pass
+ALTER USER yugabyte WITH PASSWORD 'Yb@2026xx';
+# Thoát ra sau đó đăng nhập lại thu
+/u01/ybdb/yugabyte/bin/ysqlsh -h 127.0.0.1 -U yugabyte -W
+# Tạo file .pgpass để tự động xác thực trong khi backup.
+vi ~/.pgpass
+10.60.1.33:5433:*:yugabyte:Yb@2026xx
+127.0.0.1:5433:*:yugabyte:Yb@2026xx
+localhost:5433:*:yugabyte:Yb@2026xx
+# Set permission
+chmod 600 ~/.pgpass
+# Test lại kết nối
+/u01/ybdb/yugabyte/bin/ysqlsh -h 10.60.1.33 -p 5433 -U yugabyte
+# Chạy lệnh test backup
+/u01/colombo/scrips/yb-start.sh
+ls -lh /u01/colombo/backups
+# dat crontab sau khi test da oke
+crontab -e
+@reboot /u01/ybdb/bin/yb-start.sh
+0 1 * * * /usr/sbin/logrotate -s /u01/ybdb/logrotate.status /u01/ybdb/etc/logrotate_yugabyte.conf
+0 0 * * * /u01/ybdb/bin/yb-backup.sh
+# set quy tac mang
+sudo vi /etc/iptables/rules.v4
+# master rpc
+-A INPUT -s 10.60.1.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 7100 -m comment --comment "Ket noi master rpc" -j ACCEPT
+-A INPUT -s 10.60.3.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 7100 -m comment --comment "Ket noi master rpc" -j ACCEPT
+-A INPUT -s 10.60.0.32/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 7100 -m comment --comment "Ket noi master rpc" -j ACCEPT
+
+# master web ui
+-A INPUT -s 10.60.1.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 7000 -m comment --comment "Ket noi master web ui" -j ACCEPT
+-A INPUT -s 10.60.3.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 7000 -m comment --comment "Ket noi master web ui" -j ACCEPT
+-A INPUT -s 10.60.0.32/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 7000 -m comment --comment "Ket noi master web ui" -j ACCEPT
+
+# tserver rpc
+-A INPUT -s 10.60.1.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9100 -m comment --comment "Ket noi tserver rpc" -j ACCEPT
+-A INPUT -s 10.60.3.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9100 -m comment --comment "Ket noi tserver rpc" -j ACCEPT
+-A INPUT -s 10.60.0.32/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9100 -m comment --comment "Ket noi tserver rpc" -j ACCEPT
+
+# tserver web
+-A INPUT -s 10.60.1.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9000 -m comment --comment "Ket noi tserver web" -j ACCEPT
+-A INPUT -s 10.60.3.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9000 -m comment --comment "Ket noi tserver web" -j ACCEPT
+-A INPUT -s 10.60.0.32/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9000 -m comment --comment "Ket noi tserver web" -j ACCEPT
+
+# ysql
+-A INPUT -s 10.60.1.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 5433 -m comment --comment "Ket noi ysql" -j ACCEPT
+-A INPUT -s 10.60.3.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 5433 -m comment --comment "Ket noi ysql" -j ACCEPT
+-A INPUT -s 10.60.0.32/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 5433 -m comment --comment "Ket noi ysql" -j ACCEPT
+
+# ycql
+-A INPUT -s 10.60.1.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9042 -m comment --comment "Ket noi ycql" -j ACCEPT
+-A INPUT -s 10.60.3.33/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9042 -m comment --comment "Ket noi ycql" -j ACCEPT
+-A INPUT -s 10.60.0.32/32 -p tcp -m state --state NEW -m tcp -m multiport --dports 9042 -m comment --comment "Ket noi ycql" -j ACCEPT
+
+# app dung rule
+netfilter-persistent reload
