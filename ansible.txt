@@ -39,6 +39,10 @@ pip install -r requirements-lock.txt
 
 #Tạo SSH key
 ssh-keygen
+# kiem tra da co file id_rsa id_rsa.pub
+ls -l ~/.ssh
+# neu chua co tao lai
+ssh-keygen -t ed25519 -C "ansible"
 
 #copy key sang cac node
 ssh-copy-id root@192.168.1.101
