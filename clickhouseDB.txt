@@ -18,7 +18,7 @@ Khuyến nghị tối thiểu/node:
 16GB RAM
 200GB SSD/NVMe
 
-/etc/hosts trên cả 3 node
+/etc/hosts trên cả 3 node, set-hostname truoc, neu cai qua source tgz
 10.0.0.11 ch01
 10.0.0.12 ch02
 10.0.0.13 ch03
