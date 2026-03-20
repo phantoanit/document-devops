@@ -2,7 +2,7 @@ TRIỂN KHAI YUGABYTEDB ON-PREMISE
 
 Tài liệu này hướng dẫn cài đặt trên 3 máy chủ VM.
 
-# dat host name lan luot cho 3 vm yb1, yb2, yb3
+# dat host name lan luot cho 3 vm yb1, yb2, yb3 khi cai qua source tgz
 sudo hostnamectl set-hostname yb1
 
 #Tuning OS
