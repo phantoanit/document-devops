@@ -3,9 +3,39 @@ vi /etc/ssh/sshd_config
 #permis root login yes
 systemctl restart sshd
 
-#Cài đặt Ansible tren 1 may bat ky
+## Case cai qua goi apt, Cài đặt Ansible tren 1 may bat ky
 sudo apt update
 sudo apt install ansible -y
+
+## Case cai moi truong no internet, chuan bi truoc goi cai
+# tren may co internet chuan bi truoc
+mkdir ansible-packages
+cd ansible-packages
+# bạn nên dùng flag --platform và --python-version để tải đúng file binary voi lenh pid download
+# chuan bi truoc file get-pip.py
+pip download ansible==9.5.1
+tar -cvzf ansible.tar.gz ansible-packages/
+# copy sang may can cai
+tar -xvzf ansible.tar.gz && cd ansible
+# su dung Python Virtual Environment (venv) tranh xung dot thu vien goc cua OS, Kiểm soát phiên bản voi ung dung khac co the su dung version hoac thu vien khac
+# Khởi tạo Virtual Env (Khuyên dùng cho Production), toan bo file cai dat o trong /u01/colombo/opt/ansible-venv, khi khong can co the xoa thu muc nay
+python3 -m venv /u01/colombo/opt/ansible-venv --without-pip
+# kich hoat vao moi truong, neu muon thoat dung lenh deactivate
+source /u01/colombo/opt/ansible-venv/bin/activate
+# cai dat pip, di chuyen vao thu muc ansible/ da co file get-pip.py chuan bi truoc
+python3 get-pip.py --no-index --find-links=/u01/colombo/ansible/pip/
+pip --version
+# cai dat tro vao thu muc da giai nen, su dung no-index thay vi lay tu innternet
+pip install --no-index --find-links=/u01/colombo/ansible/ ansible==9.5.1
+ansible --version
+ln -s /opt/ansible-venv/bin/ansible /usr/local/bin/ansible
+ln -s /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
+
+# Pin dependency production sau nay dung den (rất quan trọng)
+# Export dependency:
+pip freeze > requirements-lock.txt
+# Sau này rollback cực dễ:
+pip install -r requirements-lock.txt
 
 #Tạo SSH key
 ssh-keygen
