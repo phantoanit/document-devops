@@ -404,6 +404,10 @@ SELECT * FROM system.replicas;
 SELECT hostName(), version()
 FROM clusterAllReplicas('prod_cluster', system.one);
 
+SELECT host_name, host_address, port
+FROM system.clusters
+WHERE cluster='prod_cluster';
+
 #Tạo replicated table production
 
 ✅ Nếu chỉ tạo ReplicatedMergeTree mà không có Distributed
