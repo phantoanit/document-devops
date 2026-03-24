@@ -400,6 +400,10 @@ SELECT * FROM system.clusters;
 #Kiểm tra replica thực sự hoạt động
 SELECT * FROM system.replicas;
 
+# kiem tra cluster health, hostname, version
+SELECT hostName(), version()
+FROM clusterAllReplicas('prod_cluster', system.one);
+
 #Tạo replicated table production
 
 ✅ Nếu chỉ tạo ReplicatedMergeTree mà không có Distributed
