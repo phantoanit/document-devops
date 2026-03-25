@@ -14,7 +14,7 @@ cd ansible-packages
 # bạn nên dùng flag --platform và --python-version để tải đúng file binary voi lenh pid download
 # chuan bi truoc file get-pip.py
 pip download ansible==9.5.1
-tar -cvzf ansible.tar.gz ansible-packages/
+tar -cvzf ansible.tar.gz ansible/
 # copy sang may can cai
 tar -xvzf ansible.tar.gz && cd ansible
 # su dung Python Virtual Environment (venv) tranh xung dot thu vien goc cua OS, Kiểm soát phiên bản voi ung dung khac co the su dung version hoac thu vien khac
