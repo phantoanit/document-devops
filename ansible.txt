@@ -62,11 +62,13 @@ ssh root@192.168.1.101 hostname
 192.168.1.20
 
 #Kiểm tra kết nối SSH
-ansible all -i inventory.ini -m ping -u your_user
+ansible all -i inventory/inventory.ini -m ping -u your_user
 # kiem tra tong the
 ansible-inventory -i inventory/inventory.ini --graph
 # kiem tra render template truoc
 ansible-playbook -i inventory/inventory.ini site.yml --check --diff
+# neu muon chay dong thoi 10 node them forks
+ansible-playbook -i inventory/inventory.ini site.yml -f 10
 
 # vi du mot playbook cai nginx
 #install_nginx.yml
