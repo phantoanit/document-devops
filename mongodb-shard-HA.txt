@@ -43,7 +43,8 @@ mkdir -p /u01/colombo/var/log/mongodb
 mkdir -p /u01/colombo/var/run/mongodb
 
 # cau hinh node luu config data, 3 node configsvr
-# tao duong dan luu storage
+# tao duong dan luu storage, o dia uu tien dinh dang xfs
+Using the XFS filesystem is strongly recommended with the WiredTiger storage engine
 mkdir -p /u01/colombo/mongodb/wtconfig
 vi /u01/colombo/etc/mongodb/wtconfig.conf
 storage:
