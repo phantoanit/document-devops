@@ -437,7 +437,12 @@ for(var c in collections){
             	sh.shardCollection('colombo10263.' + c, index) //sh.shardCollection('colombo10263.CoreDecl_vi', {type2: 'hashed'})
 }
 #restore data
+# vao mongos tat balancer
+sh.stopBalancer()
+# chuan bi truoc file restore
 /u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p xxxx --db colombo10263 /u01/colombo/restore/colombo10263/data --gzip
+# vao mongos mo lai balancer
+sh.startBalancer()
 #khi can update collections, vao port router
 /u01/colombo/mongodb/bin/mongorestore --host 10.0.140.167 --port 8299 --authenticationDatabase=admin -u colombo -p xxxx --db colombo10263 --collection Category /u01/colombo/restore/update/CoreDecl.bson.gz --gzip
 
