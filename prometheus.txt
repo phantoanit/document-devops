@@ -145,6 +145,8 @@ groups:
       - alert: Instance Down
         expr: up == 0
         for: 1m
+        labels:
+          severity: critical
       - alert: CPUUsage
         expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
         for: 1m
