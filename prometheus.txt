@@ -76,7 +76,7 @@ Chạy dịch vụ:
 
 Thêm Node Exporter vào Prometheus
 Mở file cấu hình Prometheus và thêm thông tin node cần thu thập dữ liệu
-vi /etc/prometheus/prometheus.yml
+sudo vi /etc/prometheus/prometheus.yml
 - job_name: "node-exporter" # Tên job giám sát
     static_configs:
     - targets: [":9100"] # IP của Node Exporter
