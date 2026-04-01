@@ -98,7 +98,7 @@ Tải Alertmanager: https://prometheus.io/download/#alertmanager
 # wget https://github.com/prometheus/alertmanager/releases/download/v0.26.0/alertmanager-0.26.0.linux-amd64.tar.gz
 # tar -xzf alertmanager-0.26.0.linux-amd64.tar.gz
 # cd alertmanager-0.26.0.linux-amd64
-# sudo mv alertmanager /usr/local/bin/
+# sudo mv alertmanager amtool /usr/local/bin/ 
 # sudo groupadd --system alertmanager
 # sudo useradd -s /sbin/nologin --system -g alertmanager alertmanager
 sudo mkdir -p /etc/alertmanager
@@ -145,6 +145,55 @@ groups:
       - alert: Instance Down
         expr: up == 0
         for: 1m
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: CPU usage high on {{ $labels.instance }}
+          description: CPU > 80% for 2 minutes
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: CPU critical on {{ $labels.instance }}
+          description: CPU > 90%
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Memory usage high on {{ $labels.instance }}
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+      - alert: DiskUsageHigh
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+      - alert: DiskUsageCritical
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+      - alert: DiskInodeHigh
+        expr: (1 - (node_filesystem_files_free / node_filesystem_files)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+      - alert: NetworkReceiveHigh
+        expr: rate(node_network_receive_bytes_total[5m]) > 100000000
+        for: 1m
+        labels:
+          severity: warning
+
 
 kiểm tra syntax:
 # promtool check rules /etc/prometheus/alert-rules.yml
@@ -166,5 +215,68 @@ rule_files:
   - alert_rules.yml
 
 # sudo systemctl restart prometheus.service
-Chạy lại prometheus server và quay lại prometheus UI, vào phần Alert sẽ thấy các rule và alert:
+Chạy lại prometheus server và quay lại prometheus UI, vào phần Alert sẽ thấy các rule và alert
+
+Tạo file cấu hình alert notify đến email. Các bạn tạo file cấu hình Alertmanager tại vị trí /etc/alertmanager/alertmanager.yml
+# sudo mkdir /etc/alertmanager/
+# sudo vi /etc/alertmanager/alertmanager.yml
+global:
+  resolve_timeout: 5m
+route:
+  group_by: ["alertname"]
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: "email"
+receivers:
+- name: "email"
+  email_configs:
+  - to: "example@gmail.com"
+    from: "example@gmail.com"
+    smarthost: "smtp.gmail.com:587"
+    auth_identity: "example@gmail.com"
+    auth_secret: ""
+    auth_username: "example@gmail.com"
+
+Giải thích:
+
+Group by, group wait, group interval là thời gian xử lý các cảnh báo mới cùng nhóm (ở đây là cùng tên cảnh báo)
+Repeat interval là thời gian lặp lại thông báo khi cảnh báo vẫn tiếp diễn liên tục
+Receivers ở đây mình đặt là email và cấu hình SMTP của gmail (các bạn có thể dùng một tài khoản email của công ty gửi sang một email nào đó hoặc tự gửi chính mình)
+Auth_secret là mã ứng dụng bạn vừa tạo
+
+sudo vi /etc/alertmanager/alertmanager.yml
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  #receiver: 'web.hook'
+  receiver: 'telegram'
+receivers:
+  #- name: 'web.hook'
+  #  webhook_configs:
+  #    - url: 'http://127.0.0.1:5001/'
+  - name: telegram
+    telegram_configs:
+
+    - bot_token: '8195029271:AAEJ_4jEnA8NsNRFlPJgLbnZToamBAYRB_k'
+      chat_id: 8012682684
+      parse_mode: 'Markdown'
+      message: |
+      🚨 Alert: {{ .CommonLabels.alertname }}
+      Severity: {{ .CommonLabels.severity }}
+      Instance: {{ .CommonLabels.instance }}
+      Summary: {{ .CommonAnnotations.summary }}
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+
+global:
+  resolve_timeout: 5m
+
+
 
