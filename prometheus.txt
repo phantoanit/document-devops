@@ -347,3 +347,7 @@ Prometheus UI
 Query: probe_success
 
 sudo systemctl restart prometheus
+
+Tao telegram bot
+vao tim kiem o khung chat, tim noi dung "bot father", nhap /newbot, nap ten bot, nhap username bot, luu lai token khi co phan hoi
+de lay id chat ma muon bot gui message den thi gui tin nhat bat ky den bot roi truy cap de lay chat id: https://api.telegram.org/bot{token}/getUpdates
