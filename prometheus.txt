@@ -140,6 +140,16 @@ Tạo rule alert trên Prometheus server (*)
 ví dụ một rule cơ bản như sau: Nhóm “Linux Alert”, cảnh báo “Instance Down”, điều kiện “up == 0”, trong vòng “1m”
 sudo vi /etc/prometheus/alert_rules.yml
 groups:
+  - name: app-alerts
+    rules:
+    - alert: AppDown
+      expr: probe_success == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "App down on {{ $labels.instance }}"
+        description: "HTTP probe failed for 1 minute"
   - name: Linux Alert
     rules:
       - alert: Instance Down
@@ -266,10 +276,11 @@ receivers:
       chat_id: 8012682684
       parse_mode: 'Markdown'
       message: |
-      🚨 Alert: {{ .CommonLabels.alertname }}
-      Severity: {{ .CommonLabels.severity }}
-      Instance: {{ .CommonLabels.instance }}
-      Summary: {{ .CommonAnnotations.summary }}
+        🚨 Alert: {{ .CommonLabels.alertname }}
+        Severity: {{ .CommonLabels.severity }}
+        Instance: {{ .CommonLabels.instance }}
+        Summary: {{ .CommonAnnotations.summary }}
+        Description: {{ .CommonAnnotations.description }}
 inhibit_rules:
   - source_match:
       severity: 'critical'
@@ -280,5 +291,59 @@ inhibit_rules:
 global:
   resolve_timeout: 5m
 
+Cai dat Blackbox exporter
+Blackbox exporter là một exporter riêng chạy như service:
+Prometheus  --->  Blackbox Exporter  --->  HTTP check app/nginx
 
+sudo useradd --no-create-home --shell /bin/false blackbox
+wget https://github.com/prometheus/blackbox_exporter/releases/download/v0.25.0/blackbox_exporter-0.25.0.linux-amd64.tar.gz
+tar xvf blackbox_exporter-*.tar.gz
+cd blackbox_exporter-*
+sudo cp blackbox_exporter /usr/local/bin/
+sudo mkdir /etc/blackbox_exporter
+sudo cp blackbox.yml /etc/blackbox_exporter/
+sudo chown blackbox:blackbox /usr/local/bin/blackbox_exporter
+sudo chown -R blackbox:blackbox /etc/blackbox_exporter
+sudo vi /etc/systemd/system/blackbox_exporter.service
+[Unit]
+Description=Blackbox Exporter
+After=network.target
 
+[Service]
+User=blackbox
+Group=blackbox
+ExecStart=/usr/local/bin/blackbox_exporter \
+  --config.file=/etc/blackbox_exporter/blackbox.yml
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl daemon-reload
+sudo systemctl enable blackbox_exporter
+sudo systemctl start blackbox_exporter
+sudo systemctl status blackbox_exporter
+ss -lntp | grep 9115
+curl http://localhost:9115/metrics
+
+Cấu hình Prometheus scrape
+sudo vi /etc/prometheus/prometheus.yml
+- job_name: "blackbox-http"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://192.168.181.129
+        - http://192.168.181.130
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.181.131:9115 #node blackbox
+
+Prometheus UI
+Query: probe_success
+
+sudo systemctl restart prometheus
