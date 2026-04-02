@@ -281,6 +281,7 @@ receivers:
         Instance: {{ .CommonLabels.instance }}
         Summary: {{ .CommonAnnotations.summary }}
         Description: {{ .CommonAnnotations.description }}
+        💣 Trigger time: {{ .StartsAt.Local.Format "15:04:05 MST 2006-01-02" }}
 inhibit_rules:
   - source_match:
       severity: 'critical'
