@@ -1,0 +1,40 @@
+Cài đặt Grafana và liên kết Datasource
+# sudo apt-get install -y apt-transport-https software-properties-common wget
+# sudo mkdir -p /etc/apt/keyrings/
+# wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+# echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+# sudo apt-get update
+# sudo apt-get install -y grafana
+# grafana-server -v
+# sudo systemctl start grafana-server
+# sudo systemctl enable grafana-server
+# systemctl status grafana-server
+
+Grafana hoạt động ở port 3000, các bạn truy cập http://:3000 với tài khoản mật khẩu admin/admin
+Sau đó vào Connections/Add new connections và thêm Prometheus
+Sau đó vào Connections/Add new data sources, Điền thông tin địa chỉ Prometheus da cai dat, Sau đó ấn Save & Test để kiểm tra
+Bây giờ các bạn có thể vào Explore view để xem các dữ liệu từ Prometheus đã được nhận về Grafana hoặc vào building a dashboard để tạo biểu đồ.
+Có rất nhiều biểu đồ có sẵn từ cộng đồng: https://grafana.com/grafana/dashboards/
+Vi du Một Dashboard có sẵn cho Node Exporter, chon menu Dashboard -> import Dashboard, các bạn nhập ID 1860 - dashboard node exporter co san và ấn Load, tiep tuc xuong duoi Chọn Datasource về Prometheus, Sau đó ấn Import, một biểu đồ đầu tiên đã được tạo ra
+
+Vu du tao bieu do, co the tai su dung
+Tùy từng loại metrics và các giá trị bạn có thể tính toán và vẽ biểu đồ sao cho hợp lý, các bạn có thể tham khảo thông tin về các loại metrics từ tài liệu chính thống của Exporter sử dụng. Nghe thì có vẻ hơi oải nhưng thực ra mục đích chỉ cần cơ bản thôi: Tên, CPU, Ram, Disk, Network, Uptime thì search tài liệu cũng khá đơn giản.
+Menu dashboard, New Dashboard, add virsualization, Chọn Datasource Prometheus
+nhin xuong khu vuc ben duoi, o select mertrics thử cái Metrics explorer
+Ví dụ, tôi muốn tìm kiếm thông tin về Ram trống của node, có một metrics liên quan là Node Memory Free hay lua chon, Ấn Run queries để xem thử, chọn thời gian 15 phút trước
+Biểu đồ dạng time-series sẽ cho thấy sự thay đổi của giá trị theo thời gian, ở đây là RAM trống. 
+Menu bên phải là các cài đặt biểu đồ, các bạn có thể mày mò thêm: Kéo xuống phần Units chọn đơn vị là bytes Ngoài ra bạn có thể thử chuyển sang dạng biểu đồ Stats, chỉ hiển thị giá trị cuối cùng và gọn gàng hơn.
+Ấn Apply để lưu và tạo thử biểu đồ thứ hai
+
+Tạo biểu đồ dạng chữ Dữ liệu dạng time-series chủ yếu là dạng số, vậy các thông tin dạng chữ thì ở đâu? Tất nhiên là sẽ được lưu trong Label. Vậy làm sao để lấy giá trị cái Label đó ra thì hãy cùng thử nhé! 
+nhin xuong khu vuc ben duoi, o select mertrics thử cái Metrics explorer
+Lần này tôi thử tìm kiếm Node OS Info để xem thông tin về hệ điều hành
+Thoạt nhìn qua thì thấy rất nhiều thông tin dạng text được lưu trong Label như ubuntu, debian, Ubuntu 22.04 LTS
+Với biểu đồ này, o khu vu cau hinh thanh ben phai, các bạn chọn loại Stats để chỉ lấy giá trị, kéo xuống phần Stat styles:
+Text mode chọn Name để lấy tên metrics
+Graph mode chọn None để bỏ qua biểu đồ ở dưới
+Vậy là gần xong rồi, giả sử mình muốn chỉ có giá trị của Label id_like và pretty_name thì làm như sau: 
+nhin Xuống khu vuc goc trai ben duoi man hinh, phần Options, Legends chọn custom và điền Template dạng: {{id_like}} - {{label_name}},  {{label_name}} đại diện cho giá trị Label muốn lấy. Với label_name là tên Label để lấy giá trị. VD ở đây có id_like=”debian” và pretty_name=”Ubuntu 22.04.1 LTS”
+Lưu biểu đồ và chia sẻ Sau khi vẽ xong biểu đồ, các bạn nhớ ấn Save dashboard để lưu lại cấu hình Để lấy mẫu template có thể chia sẻ như trên cộng đồng Grafana, bạn chỉ cần vào Share/Export, chọn View Json hoặc Lưu file
+Sau đó người khác chỉ cần Import Json vào đây là sẽ có “mẫu” Dashboard tương tự như bạn. (Lưu ý đổi tên và id sau khi import để tránh trùng lặp)
+
