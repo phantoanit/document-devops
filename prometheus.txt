@@ -266,7 +266,7 @@ sudo vi /etc/alertmanager/telegram.tmpl
 <b>Mức độ:</b> <code>{{ .Labels.severity }}</code>
 <b>Server:</b> {{ .Labels.instance }}
 <b>Mô tả:</b> {{ .Annotations.summary }}{{ .Annotations.description }}
-<b>Bắt đầu:</b> {{ .StartsAt.Format "15:04:05 02/01/2006" }}
+<b>Bắt đầu:</b> {{ .StartsAt.Local.Format "15:04:05 02/01/2006" }}
 {{ end }}
 {{ end }}
 
@@ -275,7 +275,7 @@ sudo vi /etc/alertmanager/telegram.tmpl
 {{ range .Alerts.Resolved }}
 <b>Lỗi:</b> <code>{{ .Labels.alertname }}</code>
 <b>Server:</b> {{ .Labels.instance }}
-<b>Kết thúc:</b> {{ .EndsAt.Format "15:04:05 02/01/2006" }}
+<b>Kết thúc:</b> {{ .EndsAt.Local.Format "15:04:05 02/01/2006" }}
 {{ end }}
 {{ end }}
 {{ end }}
