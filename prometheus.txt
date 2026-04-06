@@ -152,59 +152,59 @@ groups:
         description: "HTTP probe failed for 1 minute"
   - name: Linux Alert
     rules:
-      - alert: Instance Down
-        expr: up == 0
-        for: 1m
-        labels:
-          severity: critical
-      - alert: CPUUsage
-        expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: CPU usage high on {{ $labels.instance }}
-          description: CPU > 80% for 2 minutes
-      - alert: CPUUsage
-        expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: CPU critical on {{ $labels.instance }}
-          description: CPU > 90%
-      - alert: MemoryUsage
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: Memory usage high on {{ $labels.instance }}
-      - alert: MemoryUsage
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
-        for: 1m
-        labels:
-          severity: critical
-      - alert: DiskUsage
-        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 80
-        for: 5m
-        labels:
-          severity: warning
-      - alert: DiskUsage
-        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 90
-        for: 1m
-        labels:
-          severity: critical
-      - alert: DiskInodeHigh
-        expr: (1 - (node_filesystem_files_free / node_filesystem_files)) * 100 > 80
-        for: 5m
-        labels:
-          severity: warning
-      - alert: NetworkReceiveHigh
-        expr: rate(node_network_receive_bytes_total[5m]) > 100000000
-        for: 1m
-        labels:
-          severity: warning
+    - alert: Instance Down
+      expr: up == 0
+      for: 1m
+      labels:
+        severity: critical
+    - alert: CPUUsage
+      expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: CPU usage high on {{ $labels.instance }}
+        description: CPU > 80% for 2 minutes
+    - alert: CPUUsage
+      expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: CPU critical on {{ $labels.instance }}
+        description: CPU > 90%
+    - alert: MemoryUsage
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: Memory usage high on {{ $labels.instance }}
+    - alert: MemoryUsage
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+      for: 1m
+      labels:
+        severity: critical
+    - alert: DiskUsage
+      expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+    - alert: DiskUsage
+      expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 90
+      for: 1m
+      labels:
+        severity: critical
+    - alert: DiskInodeHigh
+      expr: (1 - (node_filesystem_files_free / node_filesystem_files)) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+    - alert: NetworkReceiveHigh
+      expr: rate(node_network_receive_bytes_total[5m]) > 100000000
+      for: 1m
+      labels:
+        severity: warning
 
 
 kiểm tra syntax:
@@ -257,6 +257,29 @@ Repeat interval là thời gian lặp lại thông báo khi cảnh báo vẫn ti
 Receivers ở đây mình đặt là email và cấu hình SMTP của gmail (các bạn có thể dùng một tài khoản email của công ty gửi sang một email nào đó hoặc tự gửi chính mình)
 Auth_secret là mã ứng dụng bạn vừa tạo
 
+sudo vi /etc/alertmanager/telegram.tmpl
+{{ define "telegram.message" }}
+{{ if gt (len .Alerts.Firing) 0 }}
+🔥 <b>CẢNH BÁO ĐANG XẢY RA ({{ .Alerts.Firing | len }})</b>
+{{ range .Alerts.Firing }}
+<b>Lỗi:</b> <code>{{ .Labels.alertname }}</code>
+<b>Mức độ:</b> <code>{{ .Labels.severity }}</code>
+<b>Server:</b> {{ .Labels.instance }}
+<b>Mô tả:</b> {{ .Annotations.summary }}{{ .Annotations.description }}
+<b>Bắt đầu:</b> {{ .StartsAt.Format "15:04:05 02/01/2006" }}
+{{ end }}
+{{ end }}
+
+{{ if gt (len .Alerts.Resolved) 0 }}
+✅  <b>ĐÃ XỬ LÝ XONG ({{ .Alerts.Resolved | len }})</b>
+{{ range .Alerts.Resolved }}
+<b>Lỗi:</b> <code>{{ .Labels.alertname }}</code>
+<b>Server:</b> {{ .Labels.instance }}
+<b>Kết thúc:</b> {{ .EndsAt.Format "15:04:05 02/01/2006" }}
+{{ end }}
+{{ end }}
+{{ end }}
+
 sudo vi /etc/alertmanager/alertmanager.yml
 route:
   group_by: ['alertname']
@@ -265,6 +288,8 @@ route:
   repeat_interval: 1h
   #receiver: 'web.hook'
   receiver: 'telegram'
+templates:
+  - '/etc/alertmanager/telegram.tmpl'
 receivers:
   #- name: 'web.hook'
   #  webhook_configs:
@@ -274,14 +299,9 @@ receivers:
 
     - bot_token: '8195029271:AAEJ__k'
       chat_id: 8012682684
-      parse_mode: 'Markdown'
-      message: |
-        🚨 Alert: {{ .CommonLabels.alertname }}
-        Severity: {{ .CommonLabels.severity }}
-        Instance: {{ .CommonLabels.instance }}
-        Summary: {{ .CommonAnnotations.summary }}
-        Description: {{ .CommonAnnotations.description }}
-        💣 Trigger time: {{ .StartsAt.Local.Format "15:04:05 MST 2006-01-02" }}
+      #parse_mode: 'Markdown'
+      parse_mode: 'HTML'
+      message: '{{ template "telegram.message" . }}'
 inhibit_rules:
   - source_match:
       severity: 'critical'
