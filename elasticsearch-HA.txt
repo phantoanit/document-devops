@@ -1,0 +1,133 @@
+Thực hiện trên cả 3 servers
+Cài đặt ElasticSearch
+ 
+Tải và lưu khóa GPG dùng để xác thực các gói phần mềm Elasticsearch
+# wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+Cài đặt các gói công cụ cần thiết
+# sudo apt-get install apt-transport-https net-tools
+
+Thêm Elasticsearch 8.x vào danh sách các nguồn gói của hệ thống để cài bằng lệnh apt
+# echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+Cài đặt ElasticSearch
+# sudo apt-get update && sudo apt-get install elasticsearch
+
+Thực hiện trên server 1
+Cấu hình ES server 1 thành master của ES cluster
+Mở file cấu hình elasticsearch và chỉnh sửa
+# vi /etc/elasticsearch/elasticsearch.yml
+cluster.name: es-cluster-devopseduvn
+node.name: server-1
+network.host: 192.168.213.11
+http.port: 9200
+transport.host: 0.0.0.0
+
+Khởi động ES để tạo cụm
+# systemctl start elasticsearch
+Di chuyển đến thư mục làm việc bashscript của ES
+# cd /usr/share/elasticsearch/bin/
+Tiến hành reset lại mật khẩu
+# ./elasticsearch-reset-password -i -u elastic
+>> 123456
+Kiểm tra trạng thái bằng câu lệnh
+curl -k -u elastic:123456 https://192.168.213.11:9200/
+Kiểm tra trạng thái thông tin của ES cluster bằng lệnh
+curl -k -u elastic:123456 https://192.168.213.11:9200/_cluster/health?pretty
+ 
+Khởi tạo token để cho server 2 và server 3 join vào ES cluster
+./elasticsearch-create-enrollment-token -s node
+>> <token>
+
+Thực hiện trên server 2 và server 3
+Join ES server 2 vào ES cluster (đã thiết lập ở server 1)
+Di chuyển đến thư mục làm việc bashscript của ES
+# cd /usr/share/elasticsearch/bin/
+Xác nhận cấu hình token từ ES server 1
+./elasticsearch-reconfigure-node --enrollment-token <token>
+
+Thực hiện trên server 1
+Thay đổi phần discovery.seed_hosts
+Mở lại file cấu hình ES và tìm đến phần Discovery
+vi /etc/elasticsearch/elasticsearch.yml
+discovery.seed_hosts:
+  - 192.168.213.11:9300
+  - 192.168.213.12:9300
+  - 192.168.213.13:9300
+ 
+Khởi động lại ES
+# systemctl restart elasticsearch
+
+Thực hiện trên server 2 và server 3
+Cấu hình thiết lập cụm
+Mở file cấu hình ES
+# vi /etc/elasticsearch/elasticsearch.yml
+cluster.name: es-cluster-devopseduvn
+node.name: server-2 hoặc server-3
+network.host: 192.168.213.12 hoặc 192.168.213.13
+http.port: 9200
+discovery.seed_hosts:
+  - 192.168.213.11:9300
+  - 192.168.213.12:9300
+  - 192.168.213.13:9300
+ 
+Khởi động lại ES
+# systemctl restart elasticsearch
+
+Thực hiện trên server 1
+Thiết lập Kibana
+Cài đặt Kibana
+# sudo apt-get install kibana
+Tạo thư mục certs cho kibana
+# mkdir /etc/kibana/certs
+Tạo crt và key để truy cập kibana với https
+# openssl req -newkey rsa:4096 -nodes -sha256 -keyout /etc/kibana/certs/domain.key -subj "/CN=192.168.213.11" -addext "subjectAltName = DNS:192.168.213.11,IP:192.168.213.11" -x509 -days 365 -out /etc/kibana/certs/domain.crt
+Copy CA của ES sang Kibana
+# cp /etc/elasticsearch/certs/http_ca.crt /etc/kibana/certs/
+Mở file cấu hình Kibana
+# vi /etc/kibana/kibana.yml
+server.port: 5601
+server.host: "0.0.0.0"
+server.publicBaseUrl: "http://192.168.213.11:5601/"
+server.ssl.enabled: true
+server.ssl.certificate: /etc/kibana/certs/domain.crt
+server.ssl.key: /etc/kibana/certs/domain.key
+elasticsearch.hosts:
+  - https://192.168.213.11:9200
+  - https://192.168.213.12:9200
+  - https://192.168.213.13:9200
+elasticsearch.ssl.certificate: /etc/kibana/certs/domain.crt
+elasticsearch.ssl.key: /etc/kibana/certs/domain.key
+elasticsearch.ssl.certificateAuthorities: [ "/etc/kibana/certs/http_ca.crt" ]
+elasticsearch.ssl.verificationMode: full
+ 
+Tạo kibana token
+curl -X POST -u elastic:123456 http://192.168.213.11:9200/_security/service/elastic/kibana/credential/token/kibana_token
+Di chuyển đến thư mục làm việc bashscript của kibana
+# cd /usr/share/kibana/bin/
+Khởi chạy lệnh add elasticsearch.serviceAccountToken
+# ./kibana-keystore add elasticsearch.serviceAccountToken
+Thay đổi toàn bộ quyền thư mục /etc/kibana cho user kibana
+# chown -R kibana:kibana /etc/kibana/
+Tiến hành khởi chạy Kibana
+# systemctl start kibana
+
+Truy cap kibana http://192.168.213.11:5601, vao Dev Tools Console!, kiem tra node replica va cap nhat cau hinh
+# Create an index
+PUT /hangnhat
+
+# Add a document to my-index
+POST /hangnhat/_doc
+{
+    "id": "park_rocky-mountain",
+    "title": "Rocky Mountain",
+    "description": "Bisected north to south by the Continental Divide, this portion of the Rockies has ecosystems varying from over 150 riparian lakes to montane and subalpine forests to treeless alpine tundra."
+}
+
+# Perform a search in my-index
+GET /hangnhat/_search?q="rocky mountain"
+GET /_cat/shards/hangnhat
+GET /hangnhat/_settings
+PUT /hangnhat/_settings
+{
+    "index": {"number_of_replicas": 2}
+}
+
