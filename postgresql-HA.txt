@@ -1,0 +1,251 @@
+Thực hiện trên cả 3 servers
+Cài đặt Percona cho PostgreSql
+
+# wget https://repo.percona.com/apt/percona-release_latest.$(lsb_release -sc)_all.deb
+# dpkg -i percona-release_latest.$(lsb_release -sc)_all.deb
+# apt update -y
+# percona-release setup ppg15
+# apt install -y percona-ppg-server-15
+# systemctl status postgresql
+
+Cài partroni, etcd, pgBackRest
+
+# apt install -y python3-pip python3-dev binutils
+# apt install percona-patroni etcd etcd-server etcd-client percona-pgbackrest -y
+# systemctl stop {etcd,patroni,postgresql} && systemctl disable {etcd,patroni,postgresql}
+# rm -rf /var/lib/postgresql/15/main
+
+Thực hiện trên server 1
+Cấu hình etcd cluster
+Mở file cấu hình etcd
+# vi /etc/etcd/etcd.conf.yaml
+name: 'server-1'
+initial-cluster-token: postgresql_cluster_devopseduvn
+initial-cluster-state: new
+initial-cluster: server-1=http://192.168.213.11:2380
+data-dir: /var/lib/etcd
+initial-advertise-peer-urls: http://192.168.213.11:2380
+listen-peer-urls: http://192.168.213.11:2380
+advertise-client-urls: http://192.168.213.11:2379
+listen-client-urls: http://192.168.213.11:2379
+
+Khởi động dịch vụ etcd
+# systemctl start etcd && systemctl enable etcd
+
+Kiểm tra etcd cluster
+# etcdctl --endpoints=http://192.168.213.11:2379 member list
+
+Join etcd server 2 vào server 1 roi moi vao server2 start etcd sau
+# etcdctl --endpoints=http://192.168.1.11:2379 member add server-2 --peer-urls=http://192.168.213.12:2380
+
+Thực hiện trên server 2
+Cấu hình etcd cluster
+Mở file cấu hình etcd
+# vi /etc/etcd/etcd.conf.yaml
+name: 'server-2'
+initial-cluster-token: postgresql_cluster_devopseduvn
+initial-cluster-state: existing
+initial-cluster: server-1=http://192.168.213.11:2380,server-2=http://192.168.213.12:2380
+data-dir: /var/lib/etcd
+initial-advertise-peer-urls: http://192.168.213.12:2380
+listen-peer-urls: http://192.168.213.12:2380
+advertise-client-urls: http://192.168.213.12:2379
+listen-client-urls: http://192.168.213.12:2379
+
+Khởi động dịch vụ etcd server 2
+# systemctl start etcd && systemctl enable etcd
+
+Thực hiện trên server 1
+Cấu hình etcd cluster
+Kiểm tra etcd cluster
+# etcdctl --endpoints=http://192.168.213.11:2379 member list
+Join etcd server 3 vào server 1 roi moi vao server3 start etcd sau
+# etcdctl --endpoints=http://192.168.1.11:2379 member add server-3 --peer-urls=http://192.168.213.13:2380
+
+Thực hiện trên server 3
+Cấu hình etcd cluster
+Mở file cấu hình etcd
+# vi /etc/etcd/etcd.conf.yaml
+name: 'server-3'
+initial-cluster-token: postgresql_cluster_devopseduvn
+initial-cluster-state: existing
+initial-cluster: server-1=http://192.168.213.11:2380,server-2=http://192.168.213.12:2380,server-3=http://192.168.213.13:2380
+data-dir: /var/lib/etcd
+initial-advertise-peer-urls: http://192.168.213.13:2380
+listen-peer-urls: http://192.168.213.13:2380
+advertise-client-urls: http://192.168.213.13:2379
+listen-client-urls: http://192.168.213.13:2379
+
+Khởi động dịch vụ etcd server3
+# systemctl start etcd && systemctl enable etcd
+
+Kiểm tra etcd cluster tren server1
+# etcdctl --endpoints=http://192.168.213.11:2379 member list
+
+Thực hiện trên cả 3 servers
+Cấu hình patroni
+Thêm các biến cần thiết
+# export NODE_NAME=`hostname -f | cut -d. -f1`
+# export NODE_IP=`ip addr show ens33 | awk '/inet / {print $2}' | cut -d/ -f1`
+# DATA_DIR="/var/lib/postgresql/15/main"
+# PG_BIN_DIR="/usr/lib/postgresql/15/bin"
+# NAMESPACE="devopseduvn_percona"
+# SCOPE="devopseduvn_cluster"
+
+Tạo thư mục chứa password
+# mkdir /opt/secretpg
+# chown -R postgres. /opt/secretpg
+# chmod -R 700 /opt/secretpg
+
+Tạo file cấu hình patroni /etc/patroni/patroni.yml, co su dung bac bien da khai bao tu truoc
+echo "
+namespace: ${NAMESPACE}
+scope: ${SCOPE}
+name: ${NODE_NAME}
+
+restapi:
+    listen: 0.0.0.0:8008
+    connect_address: ${NODE_IP}:8008
+
+etcd3:
+    host: ${NODE_IP}:2379
+
+bootstrap:
+  # this section will be written into Etcd:/<namespace>/<scope>/config after initializing new cluster
+  dcs:
+      ttl: 30
+      loop_wait: 10
+      retry_timeout: 10
+      maximum_lag_on_failover: 1048576
+
+      postgresql:
+          use_pg_rewind: true
+          use_slots: true
+          parameters:
+              wal_level: replica
+              hot_standby: "on"
+              wal_keep_segments: 10
+              max_wal_senders: 5
+              max_replication_slots: 10
+              wal_log_hints: "on"
+              logging_collector: 'on'
+              max_wal_size: '10GB'
+              archive_mode: "on"
+              archive_timeout: 600s
+              archive_command: "cp -f %p /home/postgres/archived/%f"
+              timezone: Asia/Ho_Chi_Minh
+              work_mem: '4MB'
+
+          pg_hba: # Add following lines to pg_hba.conf after running 'initdb'
+            - host replication replicator 127.0.0.1/32 trust
+            - host replication replicator 0.0.0.0/0 md5
+            - host all all 0.0.0.0/0 md5
+            - host all all ::0/0 md5
+          recovery_conf:
+            restore_command: cp /home/postgres/archived/%f %p
+
+  # some desired options for 'initdb'
+  initdb: # Note: It needs to be a list (some options need values, others are switches)
+      - encoding: UTF8
+      - data-checksums
+
+
+postgresql:
+    cluster_name: cluster_1
+    listen: 0.0.0.0:5432
+    connect_address: ${NODE_IP}:5432
+    data_dir: ${DATA_DIR}
+    bin_dir: ${PG_BIN_DIR}
+    pgpass: /opt/secretpg/pgpass0
+    authentication:
+        replication:
+            username: replicator
+            password: replPasswd
+        superuser:
+            username: postgres
+            password: qaz123
+    parameters:
+        unix_socket_directories: "/var/run/postgresql/"
+    create_replica_methods:
+        - basebackup
+    basebackup:
+        checkpoint: 'fast'
+
+    watchdog:
+      mode: required # Allowed values: off, automatic, required
+      device: /dev/watchdog
+      safety_margin: 5
+
+tags:
+    nofailover: false
+    noloadbalance: false
+    clonefrom: false
+    nosync: false
+" | sudo tee /etc/patroni/patroni.yml
+
+Khởi động lại dịch vụ patroni
+# systemctl restart patroni && systemctl enable patroni
+
+Kiểm tra cluster
+# patronictl -c /etc/patroni/patroni.yml list $SCOPE
+Neu chua co primary va replica, xem sua lai cau hin patroni cho phu hop
+patronictl -c /etc/patroni/patroni.yml edit-config
+# Kiem tra cau hinh pg_hba neu can
+cat /var/lib/postgresql/15/main/pg_hba.conf
+# Lenh remove cluster neu can
+patronictl -c /etc/patroni/patroni.yml remove name_cluster
+rm -rf /var/lib/postgresql/15/main/*
+systemctl restart patroni.service
+# Lenh reload cluster patroni
+patronictl -c /etc/patroni/patroni.yml reload name_cluster 
+patronictl -c /etc/patroni/patroni.yml restart name_cluster 
+
+Cấu hình HAproxy tren ca 3 server, haproxy se tu healcheck patroni de biet server nao la primary
+# apt install -y haproxy
+# mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.org
+# vi /etc/haproxy/haproxy.cfg
+global
+    maxconn 100
+
+defaults
+    log global
+    mode tcp
+    retries 2
+    timeout client 30m
+    timeout connect 4s
+    timeout server 30m
+    timeout check 5s
+
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+
+listen primary
+    bind *:5000
+    option httpchk /primary
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server node1 192.168.213.11:5432 maxconn 100 check port 8008
+    server node2 192.168.213.12:5432 maxconn 100 check port 8008
+    server node3 192.168.213.13:5432 maxconn 100 check port 8008
+
+listen standbys
+    balance roundrobin
+    bind *:5001
+    option httpchk /replica
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server node1 192.168.213.11:5432 maxconn 100 check port 8008
+    server node2 192.168.213.12:5432 maxconn 100 check port 8008
+    server node3 192.168.213.13:5432 maxconn 100 check port 8008
+
+Khởi động lại HAproxy
+# systemctl restart haproxy
+Kiem tra ndoe primary
+curl 192.168.181.11:8008/primary -I
+Thu vao db voi mat khau da cau hinh o patroni,  truy van tao db
+psql -U postgres -h 192.168.181.130 -p 5000
+create database test;
+\l;
