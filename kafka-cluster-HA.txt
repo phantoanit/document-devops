@@ -1,0 +1,94 @@
+Thực hiện trên cả 3 server
+
+Cài đặt Java va net-tools
+# apt install -y default-jre net-tools
+Cài đặt zookeeper
+# apt install -y zookeeperd
+Thêm id cho cụm zookeeper (thêm tương ứng cho từng server – từng dòng chạy trên từng server)
+# echo "1" > /var/lib/zookeeper/myid
+# echo "2" > /var/lib/zookeeper/myid
+# echo "3" > /var/lib/zookeeper/myid
+
+Mở file cấu hình zookeeper để thiết lập cluster
+# vi /etc/zookeeper/conf/zoo.cfg
+server.1=192.168.213.11:2888:3888
+server.2=192.168.213.12:2888:3888
+server.3=192.168.213.13:2888:3888
+ 
+Khởi động lại zookeeper
+# systemctl restart zookeeper
+
+Thực hiện trên server 1
+Test tính HA của zookeeper
+ 
+Truy cập vào môi trường zookeeper
+# /usr/share/zookeeper/bin/zkCli.sh -server 192.168.213.11:2181
+Thêm znode và kiểm tra
+[zk: 192.168.213.11:2181(CONNECTED) 0] create /devopseduvn_series "series storage"
+[zk: 192.168.213.11:2181(CONNECTED) 1] get /devopseduvn_series
+[zk: 192.168.213.11:2181(CONNECTED) 2] create /devopseduvn_series/series_1 "DevOps for Freshers"
+[zk: 192.168.213.11:2181(CONNECTED) 3] create /devopseduvn_series/series_2 "Xây dựng quy trình pipeline DevSecOps thực tế"
+[zk: 192.168.213.11:2181(CONNECTED) 4] create /devopseduvn_series/series_3 "HA tools"
+[zk: 192.168.213.11:2181(CONNECTED) 5] ls /devopseduvn_series
+ 
+Thực hiện trên server 2 hoặc server 3
+Test tính HA của zookeeper
+ 
+Truy cập vào môi trường zookeeper
+# /usr/share/zookeeper/bin/zkCli.sh -server 192.168.213.11:2181
+Kiểm tra thành công cài đặt zookeeper cluster
+[zk: 192.168.213.11:2181(CONNECTED) 0] get /devopseduvn_series
+
+
+Thực hiện trên cả 3 servers
+Cài đặt kafka
+
+Truy cập đây để tải các version kafka mong muốn
+# cd && wget https://archive.apache.org/dist/kafka/3.7.1/kafka_2.12-3.7.1.tgz
+Giải nén file vừa tải
+# tar xzf kafka_2.12-3.7.1.tgz
+Di chuyển vào thư mục hệ thống làm việc
+# mv kafka_2.12-3.7.1 /usr/local/kafka
+Di chuyển đến thư mục làm việc và mở file cấu hình kafka để thiết lập kafka cluster
+# sudo mkdir /var/lib/kafka-logs
+# cd /usr/local/kafka && vi config/server.properties
+broker.id=0 # chú ý thay đổi tương ứng tang dan sang từng server
+listeners=PLAINTEXT://192.168.213.11:9092 
+advertised.listeners=PLAINTEXT://192.168.213.11:9092
+log.dirs=/var/lib/kafka-logs
+zookeeper.connect=192.168.213.11:2181,192.168.213.12:2181,192.168.213.13:2181 
+ 
+Khởi chạy Kafka duoi process truoc de test
+# bin/kafka-server-start.sh config/server.properties > logfile.log 2>&1 &
+Kiem tra log
+# tail -f logfile.log
+
+Thực hiện trên server 1
+Kiểm tra tính HA
+Tạo topic
+# bin/kafka-topics.sh --create --topic user_activity --bootstrap-server 192.168.213.11:9092 --replication-factor 3 --partitions 6
+Thực hiện trên server 2 hoặc server 3
+Kiểm tra tính HA
+Lấy danh sách topic
+# bin/kafka-topics.sh --list --bootstrap-server 192.168.213.12:9092
+
+Thực hiện trên 3 servers
+Cấu hình khởi chạy kafka với service
+sudo vi /etc/systemd/system/kafka.service
+[Unit]
+Description=Apache Kafka Server
+After=zookeeper.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/kafka/bin/kafka-server-start.sh /usr/local/kafka/config/server.properties
+ExecStop=/usr/local/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl daemon-reload
+systemctl start kafka
+systemctl enable kafka
+systemctl status kafka
