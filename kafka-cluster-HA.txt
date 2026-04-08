@@ -73,6 +73,7 @@ Lấy danh sách topic
 # bin/kafka-topics.sh --list --bootstrap-server 192.168.213.12:9092
 
 Thực hiện trên 3 servers
+Kill process kafka-server-start.sh truoc do,
 Cấu hình khởi chạy kafka với service
 sudo vi /etc/systemd/system/kafka.service
 [Unit]
