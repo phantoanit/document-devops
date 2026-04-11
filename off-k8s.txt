@@ -28,6 +28,9 @@ sudo poweroff
 sudo systemctl status kubelet
 sudo systemctl status containerd
 
+# Nếu trước đó drain
+kubectl uncordon worker-1
+
 # Kiểm tra trạng thái Cluster
 kubectl get nodes
 kubectl get pods -A
