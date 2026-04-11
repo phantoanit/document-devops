@@ -1,5 +1,7 @@
 #Tắt các ứng dụng đang chạy 
 kubectl scale deployment <your-app> --replicas=0
+# Co the drain worker luon neu can
+kubectl drain worker-1 --ignore-daemonsets --delete-emptydir-data
 
 #SSH vào từng node Worker nodes → Sau đó mới đến Master nodes
 
@@ -16,9 +18,12 @@ sudo ETCDCTL_API=3 etcdctl \
   --key=/etc/kubernetes/pki/etcd/server.key \
   snapshot save /root/etcd-backup.db
 
+# Luôn giữ 2 node master để off cuối cùng, quorum=2
+
 sudo poweroff
 
 #Bật lại các máy (master và worker) Master nodes → Rồi đến Worker nodes
+# Bật 2 node master trước, quorum=2, sau đó mới đến lần lượt node master sau
 #Kiểm tra dịch vụ tự khởi động
 sudo systemctl status kubelet
 sudo systemctl status containerd
