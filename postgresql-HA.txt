@@ -1,3 +1,4 @@
+Nghiên cứu kết hợp PgBouncer về sau, giảm Giảm số connection/latency
 Thực hiện trên cả 3 servers
 Cài đặt Percona cho PostgreSql
 
