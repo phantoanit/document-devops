@@ -9,8 +9,8 @@ spec:
   replicas: 2
   strategy:
     rollingUpdate:
-      maxSurge: 1 #25%
-      maxUnavailable: 1 #25%
+      maxSurge: 1 #25% / so pod tăng
+      maxUnavailable: 1 #25% / so pod giữ Unavailable, pod không sẵn sàng, pod sẽ được bỏ va thay thế bởi pod Surge
     type: RollingUpdate
   revisionHistoryLimit: 11
   selector:
