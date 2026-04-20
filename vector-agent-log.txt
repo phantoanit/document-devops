@@ -13,6 +13,38 @@ sudo mkdir /etc/vector/certs/
 sudo mv /home/devops/http_ca.crt /etc/vector/certs/
 sudo chown -R vector. /etc/vector/certs
 
+# Setup application
+Thực hiện trên dev-server
+Cài đặt các công cụ cần thiết
+$ sudo apt update -y
+$ sudo apt install unzip -y
+$ sudo apt install mariadb-server -y
+$ sudo apt install openjdk-21-jdk -y
+$ sudo apt install maven -y
+$ sudo apt install docker.io
+ 
+Thiết lập database
+$ mysql -u root
+>> CREATE DATABASE ecommerce_db;
+>> CREATE USER 'ecommerce'@'%' IDENTIFIED BY 'StrongPa55WorD';
+>> GRANT ALL PRIVILEGES ON ecommerce_db.* TO 'ecommerce'@'%';
+>> FLUSH PRIVILEGES;
+>> exit
+
+# Vao thu muc source code backend
+mvn clean install -DskipTests
+java -jar target/ecom 
+mkdir /var/log/java
+# Khoi chay thu app BE
+nohup java -jar target/ecom-proj-0.0.1-SNAPSHOT.jar > /var/log/java/ecom-backend.log 2>&1 &
+tail -f /var/log/java/ecom-backend.log
+# Vao thu muc source code frontend, khoi chay app FE
+docker build -t ecommerce-fe:v1 .
+docker run --name=ecommerce-fe -dp 5173:80 ecommerce-fe:v1 
+docker log -f ecommerce-fe 
+
+
+
 # Cau hinh thu thap log tu app backend
 sudo mv -lta /etc/vector/vector.yaml /etc/vector/vector.yaml.org
 sudo mkdir /etc/vector/conf.d
