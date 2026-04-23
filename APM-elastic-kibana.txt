@@ -1,0 +1,47 @@
+Thực hiện trên logging-server/elastic
+Tải APM server
+sudo apt update -y && sudo apt install apm-server -y
+ 
+Cấu hình APM server tại /etc/apm-server/apm.yml
+sudo cp /etc/apm-server/apm-server.yml /etc/apm-server/apm-server.yml.org
+sudo vi /etc/apm-server/apm-server.yml
+apm-server:
+  host: "0.0.0.0:8200"
+  #secret_token: "change_this_token"
+  kibana:
+    enabled: true
+    username: "elastic"
+    password: "KHFDPeU6"
+
+output.elasticsearch:
+  hosts: ["https://192.168.157.10:9200"]
+  username: "elastic"
+  password: "KHFDPeU6"
+  ssl:
+    certificate_authorities: ["/etc/apm-server/certs/http_ca.crt"]
+ 
+
+Copy file cacert elasticsearch
+mkdir /etc/apm-server/certs/
+cp /etc/elasticsearch/certs/http_ca.crt /etc/apm-server/certs/
+chown -R apm-server. /etc/apm-server/
+ 
+Khởi động service
+systemctl start apm-server
+systemctl status apm-server
+ 
+Thực hiện trên dev-server/backend app
+
+Tải file elastic-apm-agent (nếu cài trực tiếp từ link chính thức không thành công)
+curl -L -o elastic-apm-agent.jar 
+  https://repo1.maven.org/maven2/co/elastic/apm/elastic-apm-agent/1.49.0/elastic-apm-agent-1.49.0.jar
+
+Chạy dự án với APM Java Agent
+java -javaagent:./elastic-apm-agent.jar -Dserver.port=8081 -Delastic.apm.environment=dev -Delastic.apm.service_name=ecommerce-backend-2 -Delastic.apm.server_url=http://192.168.157.10:8200 -jar target/ecom-proj-0.0.1-SNAPSHOT.jar
+
+Ket noi API backend, gui cac requet de test
+Truy cap kibana kiem tra
+- kiem tra index, Stack Management -> Index Management
+- Observability -> APM -> Service inventory
+
+
