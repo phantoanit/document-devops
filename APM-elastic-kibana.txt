@@ -288,3 +288,53 @@ bash alert-apm-failed-transaction-rate.sh
   + Thiết kế sơ đồ index pattern hoặc Loki labels để mỗi team chỉ xem log của mình.
   + Phân quyền Kibana (role-based access control). 
 - Mục tiêu: Tư duy về Logging as a Service trong doanh nghiệp.
+
+## Kich ban giam sat chinh no
+## Self-Observability Checklist
+
+### Prometheus
+- [x] Scraping itself (job: prometheus)
+- [x] Recording rules for own metrics
+- [x] Alerts on disk usage
+- [x] Alerts on scrape failures
+- [x] Alerts on query performance
+- [x] WAL corruption monitoring
+- [x] Dashboard for Prometheus health
+### Grafana
+- [x] Metrics enabled (grafana.ini)
+- [x] Prometheus scraping Grafana
+- [x] Dashboard load time tracking
+- [x] API performance monitoring
+- [x] Database query monitoring
+- [x] Session tracking
+### Elasticsearch
+- [x] X-Pack monitoring enabled
+- [x] Metricbeat for ES monitoring
+- [x] Watcher alerts for cluster health
+- [x] Disk usage monitoring
+- [x] JVM heap monitoring
+- [x] Shard status tracking
+- [x] Kibana Stack Monitoring
+### Vector/Log Shippers
+- [x] Internal metrics enabled
+- [x] Prometheus exporter configured
+- [x] Buffer monitoring
+- [x] Error rate tracking
+- [x] Throughput monitoring
+- [x] Memory usage tracking
+### Alertmanager
+- [x] Self-scraping enabled
+- [x] Notification success tracking
+- [x] Alert processing latency
+- [x] Redundant notification channels
+### Infrastructure
+- [x] Node exporters on all monitoring hosts
+- [x] Disk usage alerts
+- [x] Memory alerts
+- [x] CPU alerts
+- [x] Network monitoring
+### Meta-monitoring
+- [x] External synthetic checks (Pingdom)
+- [x] Health check endpoints
+- [x] Dead man's switch alerts
+- [x] Redundant alerting paths
