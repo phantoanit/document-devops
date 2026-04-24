@@ -44,4 +44,43 @@ Truy cap kibana kiem tra
 - kiem tra index, Stack Management -> Index Management
 - Observability -> APM -> Service inventory
 
+Lam quen voi service inventory
 
+1. Ví dụ khi Latency tăng bất thường
+- Bài toán: Bạn Thấy đường latency trung bình tăng từ 10ms lên 200ms trong 15 phút chẳng hạn thì chúng ta sẽ làm thế nào?
+- Cách xử lý:
+  + Vào Transactions => lọc endpoint nào chậm nhất.
+  + Xem chi tiết trace: có thể do query Hibernate join nhiều bảng hoặc N+1 query.
+  + Cross-check với log SQL trong Elasticsearch.
+- Kết quả: phát hiện một API gọi findAll() trên bảng products không có limit => fix code.
+ 
+2. Throughput rớt về 0
+- Bài toán: Bình thường service nhận ~100 request/phút, tự nhiên rớt về gần 0.
+- Cách xử lý:
+  + Kiểm tra load balancer hoặc gateway có gửi traffic tới service không.
+  + So sánh với metric của Nginx/Ingress.
+  + Nếu hạ tầng bình thường, khả năng upstream app (frontend hoặc API client) đã ngắt hoặc đổi route.
+- Kết quả: phát hiện Dev team vừa deploy frontend nhưng quên update URL backend.
+ 
+3. Error rate tăng lên 5%
+- Bài toán: Failed transaction rate hiển thị đỏ, từ 0% nhảy vọt lên 5%.
+- Cách xử lý:
+  + Mở tab Errors => thấy stacktrace MultipartException.
+  + Nhìn qua tab Overview thấy error xảy ra ở API upload file => check trace chi tiết.
+  + Cross-check với version mới deploy (ví dụ Spring Boot upgrade thay đổi multipart config).
+- Kết quả: rollback deploy hoặc fix cấu hình spring.servlet.multipart.max-file-size.
+ 
+4. So sánh với ngày hôm trước
+- Bài toán: Hệ thống bình thường nhưng người dùng kêu “chậm hơn hôm qua”.
+- Cách xử lý:
+  + Ở Latency/Throughput bật Comparison: Day before.
+  + Nếu thấy latency hôm nay cao hơn gấp đôi hôm qua => check pipeline CI/CD để xem có code mới deploy.
+  + Nếu throughput cao hơn hẳn hôm qua => nghi ngờ load test hoặc traffic thật tăng.
+- Kết quả: biết được nguyên nhân là do traffic tăng chứ không phải bug.
+ 
+5. Kiểm tra nhanh sau deploy
+- Bài toán: Mỗi khi release version mới, cần biết ngay service có vấn đề gì không.
+- Cách xử lý:
+  + Vào tab Overview, nhìn Latency, Throughput, Error rate trong 5-10 phút sau deploy.
+  + Nếu thông số lệch so với baseline (trung bình trước đó) => rollback nhanh.
+- Kết quả: giảm thời gian phát hiện sự cố từ hàng giờ xuống vài phút.
