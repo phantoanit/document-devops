@@ -44,7 +44,7 @@ Truy cap kibana kiem tra
 - kiem tra index, Stack Management -> Index Management
 - Observability -> APM -> Service inventory
 
-Lam quen voi service inventory
+## Lam quen voi service inventory
 
 1. Ví dụ khi Latency tăng bất thường
 - Bài toán: Bạn Thấy đường latency trung bình tăng từ 10ms lên 200ms trong 15 phút chẳng hạn thì chúng ta sẽ làm thế nào?
@@ -84,3 +84,186 @@ Lam quen voi service inventory
   + Vào tab Overview, nhìn Latency, Throughput, Error rate trong 5-10 phút sau deploy.
   + Nếu thông số lệch so với baseline (trung bình trước đó) => rollback nhanh.
 - Kết quả: giảm thời gian phát hiện sự cố từ hàng giờ xuống vài phút.
+
+## Alert APM
+vi alert-apm-failed-transaction-rate.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+############################
+# ====== CẤU HÌNH ======  #
+############################
+
+# Elasticsearch
+ES_URL="https://192.168.181.131:9200"
+ES_USER="elastic"
+ES_PASS="KHFDPeU6"
+CA_CERT="/etc/elasticsearch/certs/http_ca.crt"
+
+# APM data (transactions nằm trong data stream traces-apm-*)
+APM_INDEX="${APM_INDEX:-traces-apm*}"
+SERVICE_NAME="ecommerce-backend-2"    # Tên service trong APM
+SERVICE_ENV="${SERVICE_ENV:-}"         # "" = không lọc env; ví dụ "prod"
+
+# Cửa sổ đánh giá & ngưỡng
+WINDOW_MIN=5                           # lookback window (phút)
+THRESHOLD=10                           # % lỗi tối thiểu để alert
+MIN_TOTAL=20                           # số transaction tối thiểu trong window
+
+# Telegram
+BOT_TOKEN="8195029271:xx"
+CHAT_ID="8012682684"
+
+# Chế độ
+DRY_RUN=0                              # 1 = in thử, 0 = gửi thật
+DEBUG=1                                # 1 = in log debug
+COOLDOWN_SEC=300                       # chống spam: giây giữa hai cảnh báo
+STATE_FILE="/var/lib/apm-alert/state_failed_rate.json"
+
+# Kibana (link Overview)
+KIBANA_BASE="192.168.181.131:5601"
+KIBANA_ENV="$( [[ -n "${SERVICE_ENV:-}" ]] && echo "$SERVICE_ENV" || echo "ENVIRONMENT_ALL" )"
+
+mkdir -p "$(dirname "$STATE_FILE")"
+
+############################
+# ====== HÀM DÙNG CHUNG ===#
+############################
+
+now_iso(){ date -u -Is; }
+log(){ [[ "${DEBUG:-0}" == "1" ]] && echo "[$(now_iso)] $*"; }
+
+# urlencode bằng jq (yêu cầu jq đã cài)
+urlenc(){ jq -nr --arg v "$1" '$v|@uri'; }
+
+build_kibana_overview_url() {
+  local svc_enc env_enc from to
+  svc_enc="$(urlenc "$SERVICE_NAME")"
+  env_enc="$(urlenc "$KIBANA_ENV")"
+  from="now-${WINDOW_MIN}m"
+  to="now"
+  echo "${KIBANA_BASE}/app/apm/services/${svc_enc}/overview?comparisonEnabled=true&environment=${env_enc}&kuery=&latencyAggregationType=avg&offset=1d&rangeFrom=$(urlenc "$from")&rangeTo=$(urlenc "$to")&serviceGroup=&transactionType=request"
+}
+###  ###
+# HTTP helper: luôn in body khi lỗi để debug
+es_post() {
+  local url="$1" body="$2" body_out http
+  if [[ -f "$CA_CERT" ]]; then
+    body_out="$(curl -sS --show-error --cacert "$CA_CERT" \
+      -u "$ES_USER:$ES_PASS" -H 'Content-Type: application/json' \
+      -X POST "$url" -d "$body" -w '\n%{http_code}')"
+  else
+    body_out="$(curl -sS --show-error -k \
+      -u "$ES_USER:$ES_PASS" -H 'Content-Type: application/json' \
+      -X POST "$url" -d "$body" -w '\n%{http_code}')"
+  fi
+  http="${body_out##*$'\n'}"
+  body_out="${body_out%$'\n'*}"
+  if [[ "$http" != 2* ]]; then
+    echo "ES HTTP $http" >&2
+    echo "$body_out" | sed 's/^/ES-ERR: /' >&2
+    return 1
+  fi
+  echo "$body_out"
+}
+
+send_tg() {
+  local text="$1"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "[DRY-RUN] Telegram: $text"
+    return 0
+  fi
+  curl -sS --fail --show-error \
+    -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    -d "chat_id=${CHAT_ID}" \
+    --data-urlencode "text=${text}" >/dev/null
+}
+
+within_cooldown() {
+  [[ -f "$STATE_FILE" ]] || return 1
+  local last; last="$(jq -r '.last_sent // 0' "$STATE_FILE" 2>/dev/null || echo 0)"
+  local now; now="$(date +%s)"
+  (( now - last < COOLDOWN_SEC ))
+}
+update_cooldown(){ jq -n --argjson t "$(date +%s)" '{last_sent:$t}' > "$STATE_FILE"; }
+### ###
+############################
+# ====== TRUY VẤN APM =====#
+############################
+
+# Query transactions theo service + (optional) environment trong WINDOW_MIN phút
+BODY=$(cat <<'JSON'
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "filter": [
+        {"term":{"processor.event":"transaction"}},
+        {"term":{"transaction.type":"request"}},
+        {"range":{"@timestamp":{"gte":"now-WM","lt":"now"}}},
+        {"term":{"service.name":"SNM"}}
+      ]
+    }
+  },
+  "aggs": { "by_outcome": { "terms": { "field": "event.outcome", "size": 2 } } }
+}
+JSON
+)
+BODY="${BODY//WM/${WINDOW_MIN}m}"
+BODY="${BODY//SNM/$SERVICE_NAME}"
+
+# Thêm filter environment nếu có
+if [[ -n "$SERVICE_ENV" ]]; then
+  BODY="$(jq --arg env "$SERVICE_ENV" '.query.bool.filter += [ {"term":{"service.environment":$env}} ]' <<<"$BODY")"
+fi
+
+log "Query failed-rate last ${WINDOW_MIN}m, service='${SERVICE_NAME}', env='${SERVICE_ENV:-<any>}' indices='${APM_INDEX}'"
+[[ "$DEBUG" -eq 1 ]] && echo "$BODY" | jq . >&2
+
+RESP="$(es_post "${ES_URL}/${APM_INDEX}/_search" "$BODY")" || {
+  echo "ERROR: Elasticsearch query failed" >&2
+  exit 2
+}
+[[ "$DEBUG" -eq 1 ]] && echo "$RESP" | jq . | head -n 60 >&2 || true
+
+FAIL=$(jq -r '.aggregations.by_outcome.buckets[]? | select(.key=="failure") | .doc_count' <<<"$RESP")
+TOTAL=$(jq -r '[.aggregations.by_outcome.buckets[]?.doc_count] | add // 0' <<<"$RESP")
+FAIL=${FAIL:-0}; TOTAL=${TOTAL:-0}
+RATE=$(awk -v f="$FAIL" -v t="$TOTAL" 'BEGIN{ if(t==0){print 0}else{printf "%.2f", (f*100.0)/t} }')
+
+log "Total=${TOTAL}, Fail=${FAIL}, Rate=${RATE}% (threshold ${THRESHOLD}%, min_total ${MIN_TOTAL})"
+
+############################
+# ====== QUYẾT ĐỊNH ====== #
+############################
+if (( TOTAL >= MIN_TOTAL )) && awk -v r="$RATE" -v th="$THRESHOLD" 'BEGIN{exit !(r>=th)}'; then
+  if within_cooldown; then
+    log "Within cooldown, skip alert."
+    exit 0
+  fi
+
+  LINK="$(build_kibana_overview_url)"
+  MSG=$(
+    cat <<EOF
+APM Failed Transaction Rate HIGH
+• Service: ${SERVICE_NAME}
+• Env: ${SERVICE_ENV:-n/a}
+• Window: ${WINDOW_MIN}m
+• Total: ${TOTAL}
+• Failures: ${FAIL}
+• Rate: ${RATE}% (threshold ${THRESHOLD}%)
+
+Kibana: ${LINK}
+Time: $(now_iso)
+EOF
+  )
+  send_tg "$MSG"
+  update_cooldown
+  log "Alert sent."
+else
+  log "No alert (rate < threshold or total < MIN_TOTAL)."
+fi
+
+# Test va lap lich crontab de gui canh bao
+bash alert-apm-failed-transaction-rate.sh
+
