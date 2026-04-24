@@ -267,3 +267,24 @@ fi
 # Test va lap lich crontab de gui canh bao
 bash alert-apm-failed-transaction-rate.sh
 
+## Kich ban can chuan bi
+1. Cluster overload
+- Bối cảnh: Vector agent gửi log spike gấp 10 lần do loop bug → Elasticsearch cluster đỏ (red).
+- Yêu cầu:
+  + Viết runbook 5 bước xử lý: từ việc drop queue ở agent, scale out node, đến khôi phục cluster.
+  + Mô phỏng log spike bằng seq 1 100000 | logger -t test_spike và kiểm tra Vector buffer.
+- Mục tiêu: Thực hành cách cắt dòng máu chảy vào cluster và khôi phục hệ thống.
+ 
+2. Alert Production
+- Bối cảnh: Dịch vụ backend đang chạy bình thường, bỗng log ERROR OutOfMemory xuất hiện tăng đột biến.
+- Yêu cầu:
+  + Tạo rule cảnh báo trong Kibana: nếu trong 5 phút có > 50 log ERROR chứa từ “OutOfMemory” => gửi Telegram.
+  + Test bằng cách dùng logger gửi chuỗi 100 dòng “ERROR OutOfMemory” và quan sát Telegram.
+- Mục tiêu: Làm quen với alert-based logging và noise reduction.
+ 
+3. Multi-tenant Logging
+- Bối cảnh: Công ty có 5 team dev, mỗi team deploy microservice riêng. Cần cung cấp logging platform dùng chung.
+- Yêu cầu:
+  + Thiết kế sơ đồ index pattern hoặc Loki labels để mỗi team chỉ xem log của mình.
+  + Phân quyền Kibana (role-based access control). 
+- Mục tiêu: Tư duy về Logging as a Service trong doanh nghiệp.
