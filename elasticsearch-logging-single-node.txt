@@ -265,7 +265,7 @@ ES_PASS="KHFDPeU6"
 CA_CERT="/etc/elasticsearch/certs/http_ca.crt"
 
 # Telegram Bot Config
-BOT_TOKEN="8195029271:AAEJ_4jEnA8NsNRFlPJgLbnZToamBAYRB_k"
+BOT_TOKEN="8195029271:XXX"
 CHAT_ID="8012682684"
 
 # Kibana URL
